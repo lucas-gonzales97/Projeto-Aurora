@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "noesis": {
+      "command": "node",
+      "args": ["noesis-mcp/dist/index.js"]
+    }
+  }
+}

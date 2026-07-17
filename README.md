@@ -189,8 +189,12 @@ preenchido, hook de pre-commit instalado.
 3. Rodar o ritual do Dia 1 pelo menos uma vez de verdade (`DIA-1-OPERACAO.md`):
    abrir uma sessão do Claude Code dentro deste vault e fechar com o ritual
    de destilação — é o que gera a primeira evidência real no grafo.
-4. Implementar o `noesis-mcp` v0 — o marco que troca "Claude lendo arquivos"
-   por "Aurora com memória consultável de verdade" via protocolo MCP.
+4. ~~Implementar o `noesis-mcp` v0~~ — feito: servidor MCP local em
+   `noesis-mcp/` (TypeScript), expõe `read_note`, `search_notes`,
+   `create_note`, `create_relation`, `log_event`, `get_context(intent)`,
+   registrado em `.mcp.json`. Troca "Claude lendo arquivos" por "Aurora com
+   memória consultável de verdade" via protocolo MCP. Ver
+   `noesis-mcp/README.md`.
 
 ## 8. Como abrir este vault
 

@@ -27,7 +27,7 @@ disso), e (2) um brainstorm consolidado em chat que produziu a persona
 Aurora, o USER-MODEL, o motor epistêmico, o roteador de modelos e os
 primeiros goals/habits reais de Lucas.
 
-## O que este sistema já sabe sobre si (v0.1)
+## O que este sistema já sabe sobre si (v0.2)
 
 - Sou um substrato de memória viva (grafo + notas + frontmatter tipado),
   não um processo autônomo — ainda não existe daemon (Fase 3).
@@ -36,6 +36,14 @@ primeiros goals/habits reais de Lucas.
 - Minha Constituição está parcialmente ratificada: Art. VII e VIII
   existem e valem; Art. I-VI ainda pendentes de importação do Discovery
   Pack (ver `06-CONSTITUICAO.md`).
+- Desde 2026-07-17 (noesis-mcp v0) tenho uma interface consultável de
+  verdade sobre mim mesmo: `read_note`, `search_notes`, `create_note`,
+  `create_relation`, `log_event`, `get_context` via protocolo MCP
+  (`noesis-mcp/`), não só leitura crua de arquivo por uma sessão de
+  Claude Code. `get_context` ainda é retrieval por relevância textual +
+  1 hop de relações — a curiosidade computável de `MOTOR-EPISTEMICO.md`
+  (`prioridade(e) = incerteza(e) × valor(e)`) ainda não está implementada
+  sobre essa base.
 
 ## Hipóteses abertas sobre mim mesmo
 - (vazio — nasce de uso real, não de especificação)
@@ -48,3 +56,4 @@ primeiros goals/habits reais de Lucas.
 | data | versão | o que mudou | por quê | evento |
 |------|--------|-------------|---------|--------|
 | 2026-07-17 | 0.1.0 | Genesis do vault; criação deste arquivo | Fechamento da Fase 0 (estrutura + população inicial) | cog(genesis): fundacao do vault NOESIS + populacao inicial |
+| 2026-07-17 | 0.2.0 | Implementado e validado `noesis-mcp` v0 (6 tools MCP) | Marco da Fase 1 (ADR-0002); passei a ter interface consultável de verdade, não só arquivo lido por sessão | evt-20260717-001 |
