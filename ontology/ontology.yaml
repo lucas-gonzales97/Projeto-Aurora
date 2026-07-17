@@ -1,0 +1,70 @@
+# NOESIS — Ontologia v0.1
+# Vocabulário de tipos de entidade e tipos de relação usados no grafo.
+# Gerado a partir das regras já embutidas em scripts/validate_frontmatter.py
+# e dos "kind:" de relação observados nos documentos fundacionais e no
+# USER-MODEL. Evolui por proposta do daemon (review_required), nunca em
+# silêncio.
+
+id: ontology-v0
+version: 0.1.0
+created: 2026-07-17
+status: active
+
+entity_types:
+  goal:
+    campos_obrigatorios: [id, type, status, created, horizon, origin, confidence, progress, success_criteria, review_cycle]
+    horizon: [short, mid, long]
+    status: [active, paused, achieved, killed]
+    origin: [declared]
+  habit:
+    campos_obrigatorios: [id, type, status, created, direction, origin, trigger, frequency_target]
+    direction: [build, extinguish]
+    status: [active, consolidated, abandoned]
+    origin: [declared]
+  hypothesis:
+    campos_obrigatorios: [id, type, status, created, confidence, origin]
+    origin: [inferred, aurora, declared, co-created, daemon, session]
+    subtypes: [user-pattern, strategy]
+  project:
+    campos_obrigatorios: [id, type, status, created, domain]
+    status: [active, paused, done]
+  decision:
+    campos_obrigatorios: [id, type, status, created]
+    subtypes: [constitutional-amendment]
+  identity:
+    campos_obrigatorios: [id, type, status, created, version, confidence, mutable_by_system]
+  foundation:
+    campos_obrigatorios: [id, type, status, created, version, confidence]
+    subtypes: [routine-coordinator, constitution]
+  value:
+    campos_obrigatorios: [id, type, status, created, origin]
+    origin: [declared]
+  skill:
+    campos_obrigatorios: [id, type, status, created]
+    level: [novice, intermediate, advanced, expert]
+  conflict:
+    campos_obrigatorios: [id, type, status, created]
+  meta:
+    campos_obrigatorios: [id, type, status, created]
+
+relation_kinds:
+  # observados nos documentos existentes do vault — não é lista fechada,
+  # o daemon pode propor novos kinds (review_required).
+  emerge_de: "entidade B é a origem/substrato de onde A emerge"
+  serve_a: "A existe em função do propósito de B"
+  subordinada_a: "A não pode violar B (uso constitucional)"
+  entrelaçado_com: "A e B se afetam mutuamente, sem hierarquia clara"
+  sustenta: "A contribui para o sucesso de B"
+  sustentado_por: "inverso de sustenta"
+  depende_de: "B é pré-requisito de A"
+  coordena: "A organiza/arbitra múltiplas entidades B (ex.: goal coordenador)"
+  complementa: "A e B avançam o mesmo tipo de resultado por vias diferentes"
+  pode_usar_como_meio: "A pode ser instrumentalizada para atingir B (hipótese)"
+  irmã_de: "A e B estão na mesma camada, sem dependência direta"
+  parte_de: "A é subcomponente de B"
+  sinergia_com: "A reforça o efeito de B, sem depender dele"
+  avanca_com: "genérico — A progride quando B progride"
+
+notas:
+  - "patterns/ só recebe entidades type: hypothesis subtype: user-pattern, nunca criadas manualmente."
+  - "id de goal/habit/project/value/skill deve bater com o nome do arquivo (validate_frontmatter.py já impõe isso)."
