@@ -57,6 +57,38 @@ era outra.
 | `mcp:log-event` | renderer→main (invoke) | chama `log_event(...)` no `noesis-mcp` |
 | `window:close` / `window:minimize` | renderer→main | controles de janela (necessário — janela é `frame: false`) |
 | `window:toggle-always-on-top` | renderer→main (invoke) | liga/desliga always-on-top em runtime |
+| `mcp:create-note` | renderer→main (invoke) | chama `create_note(...)` no `noesis-mcp` (usado pelo onboarding, ver abaixo) |
+| `mcp:create-relation` | renderer→main (invoke) | chama `create_relation(...)` no `noesis-mcp` (exposto para o loop de evidência contínua de ADR-0005 §4; não usado por nenhum fluxo automático ainda) |
+| `aurora:is-first-run` | renderer→main (invoke) | `true` se `user-model/{goals,values,skills,patterns}` não têm nenhuma nota — ver Onboarding abaixo |
+
+## Onboarding epistêmico (ADR-0005)
+
+Na primeira execução (`aurora:is-first-run` = `true`), a UI mostra
+`Onboarding` (`src/renderer/AuroraApp.tsx`) em vez do chat normal: uma
+entrevista conduzida pela Aurora sob um system prompt próprio
+(`ONBOARDING_SYSTEM`), uma pergunta por vez, sem formulário. Depois de
+6+ trocas o usuário pode encerrar manualmente; em 12 o encerramento é
+automático. Ao fechar, uma segunda chamada ao modelo
+(`ONBOARDING_SYNTH_SYSTEM`) pede uma síntese em JSON estrito, que vira:
+
+- `goal`/`value`/`skill` em `user-model/{goals,values,skills}/` via
+  `mcp:create-note` (só para o que a pessoa realmente declarou);
+- `journal/onboarding.md` com a síntese completa + transcrição;
+- um `log_event` marcando o onboarding como concluído.
+
+**Traços autodeclarados (interesses, personalidade, estilo de
+aprendizagem, bloqueios) não viram nota em `user-model/patterns/`** —
+`ontology/ontology.yaml` reserva essa pasta para hipóteses *inferidas* pelo
+sistema com evidência acumulada, nunca para algo declarado manualmente. Eles
+ficam só em `journal/onboarding.md` (ver ADR-0005 §3 para o raciocínio
+completo). Se a síntese em JSON falhar por qualquer motivo, o onboarding não
+trava: grava a transcrição bruta em `journal/onboarding.md` e segue para o
+chat normal sem notas estruturadas.
+
+Como o critério de "primeira execução" é "nenhuma nota em
+`user-model/goals|values|skills|patterns`", e este vault (o de Lucas) já
+tem 8 goals e 3 skills desde a Genesis, `aurora:is-first-run` retorna
+`false` aqui — o onboarding só dispara de fato num vault novo, vazio.
 
 ## Evoluções sobre o protótipo (ver ADR-0003)
 

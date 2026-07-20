@@ -16,10 +16,15 @@ contextBridge.exposeInMainWorld("aurora", {
   mcp: {
     getContext: (intent: string) => ipcRenderer.invoke("mcp:get-context", intent),
     logEvent: (payload: unknown) => ipcRenderer.invoke("mcp:log-event", payload),
+    createNote: (payload: unknown) => ipcRenderer.invoke("mcp:create-note", payload),
+    createRelation: (payload: unknown) => ipcRenderer.invoke("mcp:create-relation", payload),
   },
   window: {
     close: () => ipcRenderer.send("window:close"),
     minimize: () => ipcRenderer.send("window:minimize"),
     toggleAlwaysOnTop: () => ipcRenderer.invoke("window:toggle-always-on-top") as Promise<boolean>,
+  },
+  onboarding: {
+    isFirstRun: () => ipcRenderer.invoke("aurora:is-first-run") as Promise<boolean>,
   },
 });

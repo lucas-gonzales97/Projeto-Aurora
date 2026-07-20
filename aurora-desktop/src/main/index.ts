@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, nativeImage } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -133,6 +134,32 @@ ipcMain.handle("mcp:get-context", async (_event, intent: string) => {
 
 ipcMain.handle("mcp:log-event", async (_event, payload: { type: string; summary: string; entities?: string[]; data?: Record<string, unknown> }) => {
   return callMcpTool("log_event", payload);
+});
+
+ipcMain.handle("mcp:create-note", async (_event, payload: Record<string, unknown>) => {
+  return callMcpTool("create_note", payload);
+});
+
+ipcMain.handle("mcp:create-relation", async (_event, payload: Record<string, unknown>) => {
+  return callMcpTool("create_relation", payload);
+});
+
+// --- IPC: onboarding (ADR-0005) ---
+// Não existe um único "arquivo de perfil" por usuário — user-model/USER-MODEL.md
+// é o schema, não uma instância. "Primeira execução" é operacionalizada como
+// "nenhuma nota real ainda em goals/values/skills/patterns" (ver ADR-0005 §5).
+const ONBOARDING_DIRS = ["user-model/goals", "user-model/values", "user-model/skills", "user-model/patterns"];
+
+function hasAnyUserModelNotes(): boolean {
+  return ONBOARDING_DIRS.some((rel) => {
+    const abs = path.join(VAULT_ROOT, rel);
+    if (!fs.existsSync(abs)) return false;
+    return fs.readdirSync(abs).some((f) => f.endsWith(".md"));
+  });
+}
+
+ipcMain.handle("aurora:is-first-run", async () => {
+  return !hasAnyUserModelNotes();
 });
 
 // --- IPC: chat (streaming) ---

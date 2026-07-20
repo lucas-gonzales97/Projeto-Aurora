@@ -23,11 +23,32 @@ interface AuroraBridge {
   mcp: {
     getContext: (intent: string) => Promise<{ intent: string; entities: any[] }>;
     logEvent: (payload: { type: string; summary: string; entities?: string[]; data?: Record<string, unknown> }) => Promise<unknown>;
+    createNote: (payload: {
+      type: string;
+      id: string;
+      dir: string;
+      status: string;
+      created?: string;
+      fields?: Record<string, unknown>;
+      relations?: { target: string; kind: string; weight?: number; reason?: string; evidence?: string[] }[];
+      body: string;
+    }) => Promise<{ path: string; validation: string; warnings: string[] }>;
+    createRelation: (payload: {
+      source_id: string;
+      target_id: string;
+      kind: string;
+      weight?: number;
+      reason?: string;
+      evidence?: string[];
+    }) => Promise<unknown>;
   };
   window: {
     close: () => void;
     minimize: () => void;
     toggleAlwaysOnTop: () => Promise<boolean>;
+  };
+  onboarding: {
+    isFirstRun: () => Promise<boolean>;
   };
 }
 

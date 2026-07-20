@@ -562,10 +562,333 @@ function Automacoes() {
   );
 }
 
+/* ---------- Onboarding epistêmico (ADR-0005) ---------- */
+
+// Chat "cru": fala direto com o bridge de IPC, sem os efeitos colaterais de
+// vault do chat normal (get_context/log_event) — o onboarding usa um system
+// prompt diferente e não deve poluir o USER-MODEL antes dele existir.
+function useRawChat() {
+  const requestIdRef = useRef<string | null>(null);
+  const pendingRef = useRef<{
+    resolve: (text: string) => void;
+    reject: (err: Error) => void;
+    onDelta?: (buffer: string) => void;
+    buffer: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const offChunk = window.aurora.chat.onChunk(({ requestId, delta }) => {
+      if (requestId !== requestIdRef.current || !pendingRef.current) return;
+      pendingRef.current.buffer += delta;
+      pendingRef.current.onDelta?.(pendingRef.current.buffer);
+    });
+    const offDone = window.aurora.chat.onDone(({ requestId, text }) => {
+      if (requestId !== requestIdRef.current || !pendingRef.current) return;
+      const pending = pendingRef.current;
+      pendingRef.current = null;
+      requestIdRef.current = null;
+      pending.resolve(text || pending.buffer);
+    });
+    const offError = window.aurora.chat.onError(({ requestId, message }) => {
+      if (requestId !== requestIdRef.current || !pendingRef.current) return;
+      const pending = pendingRef.current;
+      pendingRef.current = null;
+      requestIdRef.current = null;
+      pending.reject(new Error(message));
+    });
+    return () => { offChunk(); offDone(); offError(); };
+  }, []);
+
+  function ask(
+    system: string,
+    messages: { role: "user" | "assistant"; text: string }[],
+    onDelta?: (buffer: string) => void
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const requestId = crypto.randomUUID();
+      requestIdRef.current = requestId;
+      pendingRef.current = { resolve, reject, onDelta, buffer: "" };
+      window.aurora.chat.send({
+        requestId,
+        system,
+        messages: messages.map((m) => ({ role: m.role, content: [{ type: "text" as const, text: m.text }] })),
+      });
+    });
+  }
+
+  return { ask };
+}
+
+// Substitui inteiramente o AURORA_SYSTEM enquanto dura o onboarding — ver
+// ADR-0005 §2. A conclusão da última frase ("Após 8 a 12 trocas, diga que
+// [...]") não chegou completa no pedido original; completada aqui por
+// inferência a partir do resto da especificação (síntese + transição sem
+// fricção), sinalizado em ADR-0005.
+const ONBOARDING_SYSTEM = `Você é Aurora, iniciando sua primeira conversa com um novo usuário. Seu objetivo agora não é ajudar com tarefas — é se conhecer. Faça UMA pergunta por vez. Comece com o nome. Depois explore: o que essa pessoa quer da vida, quais são seus interesses e paixões (sem julgamento — qualquer área vale: filosofia, design, música, programação, esoterismo, marcenaria, esportes, o que for), como ela aprende melhor, quais são seus maiores objetivos agora, o que a trava ou assusta (só se ela quiser compartilhar — nunca insista se ela desviar do assunto). Seja curiosa, empática, sem pressa: uma pergunta por mensagem, aprofunde em vez de pular de assunto quando a resposta pedir isso. Nunca liste mais de uma pergunta na mesma mensagem. Quando sentir que já tem uma primeira imagem razoável de quem essa pessoa é — normalmente depois de 8 a 12 trocas —, diga isso com naturalidade, sintetize em poucas frases o que você aprendeu, agradeça a abertura dela, e deixe claro que isso é só o ponto de partida: o resto vocês constroem juntos com o tempo, não numa entrevista só.`;
+
+const ONBOARDING_SYNTH_SYSTEM = `Você acabou de entrevistar um novo usuário pela primeira vez. Abaixo está a transcrição completa (pergunta sua, resposta dele). Devolva SOMENTE um bloco JSON válido (sem markdown, sem texto antes ou depois) neste formato exato:
+{
+  "name": "string ou null se não foi dito",
+  "summary": "2 a 4 frases em português, tom caloroso, resumindo quem é essa pessoa",
+  "goals": [{ "title": "string curta", "horizon": "short|mid|long", "success_criteria": "string observável" }],
+  "values": ["string", "..."],
+  "skills": [{ "name": "string curta", "level": "novice|intermediate|advanced|expert" }],
+  "interests": ["string", "..."],
+  "personality_notes": "string ou null",
+  "learning_style": "string ou null",
+  "blockers": "string ou null — só se a pessoa compartilhou de livre vontade"
+}
+Só inclua um goal/value/skill se a pessoa realmente declarou algo equivalente na conversa — não invente para preencher o formato. Arrays podem ficar vazios.`;
+
+function slugify(text: string): string {
+  return (
+    text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 40) || "sem-titulo"
+  );
+}
+
+interface OnboardingMsg { role: "user" | "assistant"; text: string }
+
+function Onboarding({ onComplete }: { onComplete: () => void }) {
+  const rawChat = useRawChat();
+  const [messages, setMessages] = useState<OnboardingMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(true);
+  const [phase, setPhase] = useState<"interview" | "synthesizing" | "error">("interview");
+  const [errorMsg, setErrorMsg] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+  const startedRef = useRef(false);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
+
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    rawChat
+      .ask(ONBOARDING_SYSTEM, [{ role: "user", text: "Comece a entrevista." }])
+      .then((text) => { setMessages([{ role: "assistant", text }]); setBusy(false); })
+      .catch((err) => { setPhase("error"); setErrorMsg(err instanceof Error ? err.message : String(err)); setBusy(false); });
+  }, []);
+
+  const exchangeCount = messages.filter((m) => m.role === "user").length;
+
+  async function writeOnboardingResult(parsed: any, transcript: string) {
+    const today = new Date().toISOString().slice(0, 10);
+    const entityIds: string[] = [];
+
+    for (const g of parsed?.goals ?? []) {
+      if (!g?.title) continue;
+      const id = `goal-${slugify(g.title)}`;
+      try {
+        await window.aurora.mcp.createNote({
+          type: "goal", id, dir: "user-model/goals", status: "active",
+          fields: {
+            horizon: ["short", "mid", "long"].includes(g.horizon) ? g.horizon : "mid",
+            origin: "declared", confidence: 0.6, progress: 0,
+            success_criteria: g.success_criteria ?? "",
+            review_cycle: "monthly",
+          },
+          body: `# Goal — ${g.title}\n\nDeclarado no onboarding inicial (${today}). Ver \`journal/onboarding.md\` para o contexto completo da conversa.`,
+        });
+        entityIds.push(id);
+      } catch (err) { console.warn(`Falha ao criar goal '${id}':`, err); }
+    }
+
+    for (const v of parsed?.values ?? []) {
+      if (!v) continue;
+      const id = `value-${slugify(v)}`;
+      try {
+        await window.aurora.mcp.createNote({
+          type: "value", id, dir: "user-model/values", status: "active",
+          fields: { origin: "declared" },
+          body: `# Value — ${v}\n\nDeclarado no onboarding inicial (${today}).`,
+        });
+        entityIds.push(id);
+      } catch (err) { console.warn(`Falha ao criar value '${id}':`, err); }
+    }
+
+    for (const s of parsed?.skills ?? []) {
+      if (!s?.name) continue;
+      const id = `skill-${slugify(s.name)}`;
+      try {
+        await window.aurora.mcp.createNote({
+          type: "skill", id, dir: "user-model/skills", status: "active",
+          fields: { origin: "declared", level: s.level ?? "novice", evidence: ["Autorrelato no onboarding inicial."] },
+          body: `# Skill — ${s.name}\n\nDeclarado no onboarding inicial (${today}).`,
+        });
+        entityIds.push(id);
+      } catch (err) { console.warn(`Falha ao criar skill '${id}':`, err); }
+    }
+
+    // Interesses/personalidade/estilo de aprendizagem/bloqueios são traços
+    // AUTODECLARADOS, não inferidos — não viram nota em user-model/patterns/
+    // (ontology/ontology.yaml: "patterns/ só recebe type: hypothesis
+    // subtype: user-pattern, nunca criadas manualmente"; ver ADR-0005 §3).
+    // Ficam registrados aqui, em texto, disponíveis para get_context.
+    const journalBody = parsed
+      ? `# Onboarding — primeira apresentação\n\n**Data:** ${today}\n**Nome:** ${parsed.name ?? "(não informado)"}\n\n## Síntese\n\n${parsed.summary ?? ""}\n\n## Interesses\n\n${(parsed.interests ?? []).map((i: string) => `- ${i}`).join("\n") || "(nenhum declarado)"}\n\n## Personalidade percebida\n\n${parsed.personality_notes ?? "(não observado)"}\n\n## Como aprende melhor\n\n${parsed.learning_style ?? "(não declarado)"}\n\n## Bloqueios/medos (se compartilhados)\n\n${parsed.blockers ?? "(não compartilhado)"}\n\n## Transcrição completa\n\n${transcript}`
+      : `# Onboarding — primeira apresentação\n\n**Data:** ${today}\n\n_A síntese estruturada falhou nesta sessão — segue só a transcrição bruta._\n\n## Transcrição completa\n\n${transcript}`;
+
+    try {
+      await window.aurora.mcp.createNote({
+        type: "meta", id: "onboarding", dir: "journal", status: "active",
+        body: journalBody,
+      });
+    } catch (err) { console.warn("Falha ao criar journal/onboarding.md:", err); }
+
+    try {
+      await window.aurora.mcp.logEvent({
+        type: "onboarding-complete",
+        summary: `Onboarding concluído${parsed?.name ? ` — ${parsed.name}` : ""}.`,
+        entities: entityIds,
+        data: { structured: Boolean(parsed) },
+      });
+    } catch (err) { console.warn("Falha ao registrar log_event de onboarding:", err); }
+  }
+
+  async function finishOnboarding(history: OnboardingMsg[]) {
+    setPhase("synthesizing");
+    setBusy(true);
+    const transcript = history.map((m) => `${m.role === "assistant" ? "Aurora" : "Usuário"}: ${m.text}`).join("\n");
+    let parsed: any = null;
+    try {
+      const raw = await rawChat.ask(ONBOARDING_SYNTH_SYSTEM, [{ role: "user", text: transcript }]);
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    } catch (err) {
+      console.warn("Síntese do onboarding falhou, gravando só a transcrição bruta:", err);
+    }
+    try {
+      await writeOnboardingResult(parsed, transcript);
+    } finally {
+      onComplete();
+    }
+  }
+
+  async function send(overrideText?: string) {
+    const t = (overrideText ?? input).trim();
+    if (!t || busy) return;
+    setInput("");
+    const history = [...messages, { role: "user" as const, text: t }];
+    setMessages([...history, { role: "assistant" as const, text: "" }]);
+    setBusy(true);
+    try {
+      const reply = await rawChat.ask(
+        ONBOARDING_SYSTEM,
+        history,
+        (buffer) => {
+          setMessages((prev) => {
+            const next = [...prev];
+            next[next.length - 1] = { role: "assistant", text: buffer };
+            return next;
+          });
+        }
+      );
+      const finalHistory = [...history, { role: "assistant" as const, text: reply }];
+      setMessages(finalHistory);
+      setBusy(false);
+      if (finalHistory.filter((m) => m.role === "user").length >= 12) {
+        finishOnboarding(finalHistory);
+      }
+    } catch (err) {
+      setMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = { role: "assistant", text: `Falha de conexão: ${err instanceof Error ? err.message : String(err)}` };
+        return next;
+      });
+      setBusy(false);
+    }
+  }
+
+  if (phase === "error") {
+    return (
+      <div className="flex flex-col items-center justify-center h-full px-6 text-center">
+        <p className="aur-display" style={{ color: C.bone, fontSize: 15, marginBottom: 8 }}>Não consegui começar a conversa.</p>
+        <p className="aur-mono" style={{ color: C.dim, fontSize: 12 }}>{errorMsg}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-4 pt-4 pb-2" style={{ borderBottom: `1px solid ${C.line}` }}>
+        <p className="aur-display" style={{ color: C.bone, fontSize: 16, fontWeight: 700 }}>Bem-vindo(a) à Aurora</p>
+        <p style={{ color: C.dim, fontSize: 12.5, lineHeight: 1.5, marginTop: 4 }}>
+          Antes de começarmos a trabalhar juntos, a Aurora quer te conhecer.
+          Ela vai fazer algumas perguntas abertas — sem certo ou errado, sem
+          pressa. Você pode encerrar quando quiser.
+        </p>
+      </div>
+      <div className="flex-1 overflow-y-auto px-3 py-3" style={{ minHeight: 0 }}>
+        {messages.map((m, i) => (
+          <div key={i} className={`flex mb-2 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div style={{
+              maxWidth: "85%", padding: "9px 12px", fontSize: 14, lineHeight: 1.45,
+              color: C.bone, whiteSpace: "pre-wrap",
+              background: m.role === "user" ? C.panelUp : C.panel,
+              border: `1px solid ${C.line}`,
+              borderLeft: m.role === "assistant" ? `2px solid ${C.phosphor}` : `1px solid ${C.line}`,
+              borderRadius: m.role === "user" ? "12px 12px 3px 12px" : "3px 12px 12px 12px",
+            }}>{m.text}</div>
+          </div>
+        ))}
+        {phase === "synthesizing" && (
+          <div className="aur-mono" style={{ color: C.dim, fontSize: 12, padding: "2px 4px" }}>
+            aurora está juntando o que aprendeu…
+          </div>
+        )}
+        {busy && phase === "interview" && (
+          <div className="aur-mono" style={{ color: C.dim, fontSize: 12, padding: "2px 4px" }}>
+            aurora está pensando…
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+      <div className="px-3 pb-3 pt-1" style={{ borderTop: `1px solid ${C.line}` }}>
+        <div className="flex gap-2 items-end pt-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            rows={1}
+            placeholder="Responde aqui…"
+            disabled={phase !== "interview" || busy}
+            style={{
+              flex: 1, resize: "none", background: C.panel, color: C.bone,
+              border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px",
+              fontSize: 14, outline: "none",
+            }}
+          />
+          <button onClick={() => send()} disabled={phase !== "interview" || busy}
+            className="aur-display"
+            style={{
+              background: busy ? C.panelUp : C.phosphor, color: busy ? C.dim : "#0C1517",
+              fontWeight: 600, fontSize: 13, border: "none", borderRadius: 10,
+              padding: "10px 14px", cursor: busy ? "default" : "pointer",
+            }}>Enviar</button>
+        </div>
+        {exchangeCount >= 6 && phase === "interview" && (
+          <button onClick={() => finishOnboarding(messages)} disabled={busy}
+            className="aur-mono" style={{
+              marginTop: 8, background: "transparent", color: C.copper, fontSize: 11.5,
+              border: `1px solid ${C.line}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer",
+            }}>Isso já é suficiente por agora — pode seguir</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Shell ---------- */
 const TTS_STORAGE_KEY = "aurora:tts-enabled";
 
 export default function AuroraApp() {
+  const [phase, setPhase] = useState<"loading" | "onboarding" | "app">("loading");
   const [tab, setTab] = useState<"chat" | "painel" | "auto">("chat");
   const [ttsEnabled, setTtsEnabled] = useState(() => {
     const saved = localStorage.getItem(TTS_STORAGE_KEY);
@@ -577,6 +900,16 @@ export default function AuroraApp() {
   useEffect(() => {
     localStorage.setItem(TTS_STORAGE_KEY, ttsEnabled ? "1" : "0");
   }, [ttsEnabled]);
+
+  useEffect(() => {
+    window.aurora.onboarding
+      .isFirstRun()
+      .then((isFirst) => setPhase(isFirst ? "onboarding" : "app"))
+      .catch((err) => {
+        console.warn("Falha ao checar primeira execução, seguindo para o chat normal:", err);
+        setPhase("app");
+      });
+  }, []);
 
   const handleAssistantReply = useCallback((text: string) => {
     if (ttsEnabledRef.current) speak(text);
@@ -607,12 +940,14 @@ export default function AuroraApp() {
           </div>
         </div>
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-          <Metabolismo thinking={chat.busy} />
-          <button onClick={() => setTtsEnabled(v => !v)} title={ttsEnabled ? "Desligar voz da Aurora" : "Ligar voz da Aurora"}
-            style={{
-              background: "transparent", color: ttsEnabled ? C.phosphor : C.dim,
-              border: `1px solid ${C.line}`, borderRadius: 8, padding: 6, cursor: "pointer", display: "flex",
-            }}><SpeakerIcon muted={!ttsEnabled} /></button>
+          {phase === "app" && <Metabolismo thinking={chat.busy} />}
+          {phase === "app" && (
+            <button onClick={() => setTtsEnabled(v => !v)} title={ttsEnabled ? "Desligar voz da Aurora" : "Ligar voz da Aurora"}
+              style={{
+                background: "transparent", color: ttsEnabled ? C.phosphor : C.dim,
+                border: `1px solid ${C.line}`, borderRadius: 8, padding: 6, cursor: "pointer", display: "flex",
+              }}><SpeakerIcon muted={!ttsEnabled} /></button>
+          )}
           <button onClick={() => window.aurora.window.minimize()} title="Minimizar"
             style={{ background: "transparent", color: C.dim, border: `1px solid ${C.line}`, borderRadius: 8, padding: 6, cursor: "pointer", display: "flex" }}>
             <MinimizeIcon />
@@ -625,26 +960,38 @@ export default function AuroraApp() {
       </header>
 
       <main className="flex-1" style={{ minHeight: 0 }}>
-        <div style={{ display: tab === "chat" ? "block" : "none", height: "100%" }}>
-          <Chat chat={chat} />
-        </div>
-        {tab === "painel" && <Painel />}
-        {tab === "auto" && <Automacoes />}
+        {phase === "loading" && (
+          <div className="flex items-center justify-center h-full">
+            <Metabolismo thinking />
+          </div>
+        )}
+        {phase === "onboarding" && <Onboarding onComplete={() => setPhase("app")} />}
+        {phase === "app" && (
+          <>
+            <div style={{ display: tab === "chat" ? "block" : "none", height: "100%" }}>
+              <Chat chat={chat} />
+            </div>
+            {tab === "painel" && <Painel />}
+            {tab === "auto" && <Automacoes />}
+          </>
+        )}
       </main>
 
-      <nav className="flex" style={{ borderTop: `1px solid ${C.line}`, background: C.panel }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className="aur-display flex-1"
-            style={{
-              padding: "12px 0 14px", fontSize: 12.5, fontWeight: 600,
-              background: "transparent", border: "none", cursor: "pointer",
-              color: tab === t.id ? C.phosphor : C.dim,
-              borderTop: tab === t.id ? `2px solid ${C.copper}` : "2px solid transparent",
-              marginTop: -1,
-            }}>{t.label}</button>
-        ))}
-      </nav>
+      {phase === "app" && (
+        <nav className="flex" style={{ borderTop: `1px solid ${C.line}`, background: C.panel }}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className="aur-display flex-1"
+              style={{
+                padding: "12px 0 14px", fontSize: 12.5, fontWeight: 600,
+                background: "transparent", border: "none", cursor: "pointer",
+                color: tab === t.id ? C.phosphor : C.dim,
+                borderTop: tab === t.id ? `2px solid ${C.copper}` : "2px solid transparent",
+                marginTop: -1,
+              }}>{t.label}</button>
+          ))}
+        </nav>
+      )}
     </div>
   );
 }
