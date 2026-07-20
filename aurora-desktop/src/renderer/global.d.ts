@@ -50,6 +50,17 @@ interface AuroraBridge {
   onboarding: {
     isFirstRun: () => Promise<boolean>;
   };
+  providers: {
+    list: () => Promise<{ id: string; label: string; requiresApiKey: boolean }[]>;
+    listModels: (providerId: string) => Promise<{ id: string; label: string; contextWindow?: number }[]>;
+    validateKey: (providerId: string, apiKey: string) => Promise<{ valid: boolean; error?: string }>;
+    saveKey: (providerId: string, apiKey: string) => Promise<void>;
+    deleteKey: (providerId: string) => Promise<void>;
+    hasKey: (providerId: string) => Promise<boolean>;
+    isKeyStorageSecure: () => Promise<boolean>;
+    getActive: () => Promise<{ providerId: string; model: string }>;
+    setActive: (providerId: string, model: string) => Promise<void>;
+  };
 }
 
 // Web Speech API — não faz parte do lib.dom.d.ts padrão do TypeScript.

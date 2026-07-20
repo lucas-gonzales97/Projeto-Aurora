@@ -1,10 +1,11 @@
 # aurora-desktop v0
 
 App Electron + React + TypeScript: chat com a Aurora com voz (STT/TTS), visão
-(imagem) e memória real do vault via `noesis-mcp`. Ver
-`decisions/ADR-0003-aurora-desktop.md` para as decisões de stack e
-`ORCAMENTO-FUTURO.md` para o caminho de upgrade pago de cada fallback
-gratuito usado aqui.
+(imagem), memória real do vault via `noesis-mcp`, e (em construção, ver
+"Provedores multi-LLM" abaixo) suporte a múltiplos provedores de LLM com
+chave configurada pelo usuário. Ver `decisions/ADR-0003-aurora-desktop.md`
+para as decisões de stack original e `ORCAMENTO-FUTURO.md` para o caminho de
+upgrade pago de cada fallback gratuito usado aqui.
 
 ## Setup
 
@@ -15,11 +16,13 @@ npm run build          # gera dist/main (Electron) e dist/renderer (Vite)
 ```
 
 Requer `noesis-mcp/dist/index.js` já buildado (`cd ../noesis-mcp && npm run
-build`) e a variável de ambiente `ANTHROPIC_API_KEY` definida — sem ela, o
-chat responde com uma mensagem de erro explicando o que falta.
+build`). **A chave de API não é mais lida de variável de ambiente** (ver
+"Provedores multi-LLM" abaixo) — hoje, sem a tela de Configurações (ainda não
+existe, ver Pendências), a única forma de setar uma chave é chamando o IPC
+`window.aurora.providers.saveKey(providerId, apiKey)` manualmente pelo
+DevTools do renderer (`npm run dev` abre com DevTools já destacado).
 
 ```bash
-export ANTHROPIC_API_KEY=sk-...
 npm start               # build + abre a janela Electron
 ```
 
@@ -33,13 +36,23 @@ npm run dev              # Vite dev server + Electron apontando pra ele
 
 - **Main process** (`src/main/index.ts`): cria a janela (420×780, sem frame
   nativo), spawna `noesis-mcp` via stdio (protocolo MCP, mesmo transporte que
-  o Claude Code usa) e fala com a API Anthropic via `@anthropic-ai/sdk`
-  (streaming). A chave de API nunca é exposta ao renderer.
+  o Claude Code usa) e roteia `chat:send` para o provedor de LLM ativo
+  (`src/main/providers/`, ver ADR-0006) em vez de falar só com Anthropic. A
+  chave de API nunca é exposta ao renderer.
+- **Providers** (`src/main/providers/`): `LLMProvider` (interface comum),
+  `AnthropicProvider`/`GeminiProvider` (shape próprio) e
+  `OpenAICompatibleProvider` (uma classe, várias instâncias — OpenAI, Groq,
+  Mistral, OpenRouter, Ollama, DeepSeek), `keyStore.ts` (persistência de
+  chave via `electron-store` + `safeStorage`), `index.ts` (registro +
+  `getProvider(id)`). Testado por unidade com `vitest` (`npm test`).
 - **Preload** (`src/main/preload.ts`): ponte `contextBridge` — expõe
-  `window.aurora.{chat,mcp,window,onboarding}` ao renderer, sem `nodeIntegration`.
+  `window.aurora.{chat,mcp,window,onboarding,providers}` ao renderer, sem
+  `nodeIntegration`.
 - **Renderer** (`src/renderer/AuroraApp.tsx`): UI baseada fielmente no
   protótipo `aurorav0.jsx` (paleta, 3 tabs, `Metabolismo`, chips), com voz,
   visão, contexto do vault e opções numeradas clicáveis adicionados por cima.
+  **Ainda não tem tela de Configurações** pra usar o `window.aurora.providers.*`
+  novo — ver "Provedores multi-LLM" abaixo.
 
 ## IPC exposto (`window.aurora`)
 
@@ -60,6 +73,67 @@ era outra.
 | `mcp:create-note` | renderer→main (invoke) | chama `create_note(...)` no `noesis-mcp` (usado pelo onboarding, ver abaixo) |
 | `mcp:create-relation` | renderer→main (invoke) | chama `create_relation(...)` no `noesis-mcp` (exposto para o loop de evidência contínua de ADR-0005 §4; não usado por nenhum fluxo automático ainda) |
 | `aurora:is-first-run` | renderer→main (invoke) | `true` se `user-model/{goals,values,skills,patterns}` não têm nenhuma nota — ver Onboarding abaixo |
+| `providers:list` | renderer→main (invoke) | lista `{id,label,requiresApiKey}` de todos os provedores registrados |
+| `providers:list-models` | renderer→main (invoke) | `listModels()` do provedor pedido |
+| `providers:validate-key` | renderer→main (invoke) | `validateKey()` do provedor pedido, sem salvar |
+| `providers:save-key` / `providers:delete-key` | renderer→main (invoke) | grava/remove a chave via `keyStore` (`safeStorage` + `electron-store`) |
+| `providers:has-key` | renderer→main (invoke) | `true`/`false` — nunca devolve a chave em si |
+| `providers:is-key-storage-secure` | renderer→main (invoke) | reflete `safeStorage.isEncryptionAvailable()` — UI deveria avisar se `false` |
+| `providers:get-active` / `providers:set-active` | renderer→main (invoke) | lê/grava `{providerId, model}` ativos (default: `anthropic`, sem modelo) |
+
+## Provedores multi-LLM (ADR-0006) — EM ANDAMENTO
+
+> Handoff pra continuar isso fora desta sessão: leia
+> `decisions/research-llm-providers.md` (pesquisa) e
+> `decisions/ADR-0006-multi-provider-llm.md` (decisão de arquitetura)
+> primeiro — este bloco só resume o estado do código.
+
+**Feito:**
+- `src/main/providers/types.ts` — contrato `LLMProvider` (`sendMessage`,
+  `listModels`, `validateKey`).
+- `src/main/providers/openAICompatible.ts` + testes — cobre OpenAI, Groq,
+  Mistral, OpenRouter, Ollama, DeepSeek via uma classe parametrizada.
+- `src/main/providers/anthropic.ts` + testes — mantém `@anthropic-ai/sdk`.
+- `src/main/providers/gemini.ts` + testes — shape `contents/parts` próprio.
+- `src/main/providers/keyStore.ts` + testes — `saveProviderKey`,
+  `getProviderKey`, `deleteProviderKey`, `hasProviderKey`,
+  `isKeyStorageSecure`, `getActiveProvider`/`setActiveProvider`,
+  `getActiveModel`/`setActiveModel`.
+- `src/main/providers/index.ts` — `PROVIDER_REGISTRY` + `getProvider(id)`.
+- `src/main/index.ts` — `chat:send` não fala mais só com Anthropic: resolve
+  provedor/modelo/chave ativos e roteia pro `LLMProvider` certo.
+  `ANTHROPIC_API_KEY` de variável de ambiente foi **removido** do código.
+- IPC `providers:*` completo (tabela acima) + exposto em `preload.ts` e
+  tipado em `global.d.ts`.
+- 29 testes unitários (`npm test`), todos verdes; `tsc` limpo em main e
+  renderer; `vite build` limpo.
+
+**Não feito ainda (por aqui parou):**
+1. **Tela de Configurações no renderer** — `AuroraApp.tsx` não tem UI
+   nenhuma pros `window.aurora.providers.*` novos. Precisa: nova aba/tela
+   "Settings" na mesma paleta (`design/tokens.md`), lista dos provedores
+   (`providers.list()`), campo de chave por provedor (`type="password"`,
+   botão "testar" chamando `validateKey` antes de salvar), seletor de
+   provedor+modelo ativo (`providers.setActive`), aviso quando
+   `isKeyStorageSecure()` retorna `false`. Ver ADR-0006 §6 pro design já
+   pensado — só falta implementar.
+2. **Testes e2e com Playwright** — nada configurado ainda (`@playwright/test`
+   não é dependência do projeto). Precisa: instalar, configurar o launcher
+   `_electron` (Playwright dirige o binário Electron direto, não precisa
+   baixar Chromium/Firefox pra isso), escrever e2e de "configurar uma chave"
+   e "trocar de provedor/modelo". **Atenção:** este ambiente de dev (WSL sem
+   display) provavelmente não consegue *rodar* Electron de verdade nem sob
+   Playwright — escrever os testes é possível e útil, mas validar que eles
+   passam de fato só vai ser possível numa máquina com display real
+   (Windows nativo, por exemplo).
+3. Depois de 1 e 2 passando: consolidar (squash/organizar commits se fizer
+   sentido) e considerar se `AURORA_SYSTEM` (ainda hardcoded em
+   `AuroraApp.tsx` com contexto pessoal do Lucas) deveria virar algo que o
+   Settings também edita, ou se fica como está por enquanto.
+
+**Como retomar:** `cd aurora-desktop && npm install && npm test` pra
+confirmar que a base ainda está verde, depois seguir pelo item 1 da lista
+acima.
 
 ## Onboarding epistêmico (ADR-0005)
 
@@ -199,8 +273,9 @@ de novo:
 
 ## Pendências conhecidas (v0)
 
-- `ANTHROPIC_API_KEY` fica em variável de ambiente; config de app com
-  armazenamento seguro é trabalho futuro (ver ADR-0003, riscos).
+- Tela de Configurações e testes e2e do fluxo multi-provedor — ver seção
+  "Provedores multi-LLM (ADR-0006) — EM ANDAMENTO" acima, é o trabalho em
+  aberto agora.
 - Sem assinatura de código (`codeSigningIdentity`/notarization) configurada
   — instaladores gerados hoje disparariam aviso de "app não verificado" no
   Windows/macOS. Fora de escopo enquanto o app não é distribuído a ninguém

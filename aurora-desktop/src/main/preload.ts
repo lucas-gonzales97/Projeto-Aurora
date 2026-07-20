@@ -27,4 +27,15 @@ contextBridge.exposeInMainWorld("aurora", {
   onboarding: {
     isFirstRun: () => ipcRenderer.invoke("aurora:is-first-run") as Promise<boolean>,
   },
+  providers: {
+    list: () => ipcRenderer.invoke("providers:list"),
+    listModels: (providerId: string) => ipcRenderer.invoke("providers:list-models", providerId),
+    validateKey: (providerId: string, apiKey: string) => ipcRenderer.invoke("providers:validate-key", providerId, apiKey),
+    saveKey: (providerId: string, apiKey: string) => ipcRenderer.invoke("providers:save-key", providerId, apiKey),
+    deleteKey: (providerId: string) => ipcRenderer.invoke("providers:delete-key", providerId),
+    hasKey: (providerId: string) => ipcRenderer.invoke("providers:has-key", providerId) as Promise<boolean>,
+    isKeyStorageSecure: () => ipcRenderer.invoke("providers:is-key-storage-secure") as Promise<boolean>,
+    getActive: () => ipcRenderer.invoke("providers:get-active") as Promise<{ providerId: string; model: string }>,
+    setActive: (providerId: string, model: string) => ipcRenderer.invoke("providers:set-active", providerId, model),
+  },
 });

@@ -20,6 +20,7 @@ export interface SendMessageParams {
   system: string;
   messages: ChatMessage[];
   onDelta?: (delta: string) => void;
+  maxTokens?: number; // usado por validateKey para minimizar custo do ping (ex.: Anthropic)
 }
 
 export interface SendMessageResult {
@@ -54,6 +55,14 @@ export interface OpenAICompatibleConfig {
   baseURL: string;
   requiresApiKey: boolean;
   defaultModels: ModelInfo[]; // fallback caso /models falhe ou não exista
+}
+
+// Os tipos globais de fetch/Response colidem entre @types/node e os tipos do
+// Electron neste projeto (Response.json() resolve para `{}` em vez de
+// `unknown`) — este helper isola o `any` num único lugar em vez de espalhar
+// `as any` pelos providers.
+export async function readJson(res: Response): Promise<any> {
+  return res.json();
 }
 
 export type ProviderId =

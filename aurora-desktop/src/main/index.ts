@@ -1,7 +1,19 @@
 import { app, BrowserWindow, ipcMain, nativeImage } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import Anthropic from "@anthropic-ai/sdk";
+import { PROVIDER_REGISTRY, getProvider } from "./providers/index.js";
+import type { ChatMessage } from "./providers/types.js";
+import {
+  saveProviderKey,
+  getProviderKey,
+  deleteProviderKey,
+  hasProviderKey,
+  isKeyStorageSecure,
+  getActiveProvider,
+  setActiveProvider,
+  getActiveModel,
+  setActiveModel,
+} from "./providers/keyStore.js";
 
 // Vault root: aurora-desktop/ vive na raiz do vault, ao lado de noesis-mcp/
 // (dist/main/index.js -> dist/ -> aurora-desktop/ -> raiz do vault).
@@ -17,10 +29,6 @@ const ICON_PATH = path.join(__dirname, "../../build/icon.png");
 const isDev = process.env.NODE_ENV === "development";
 const RENDERER_DEV_URL = "http://localhost:5173";
 const RENDERER_BUILD_FILE = path.join(__dirname, "../renderer/index.html");
-
-const anthropic = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null;
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -167,75 +175,108 @@ ipcMain.handle("aurora:is-first-run", async () => {
   return !hasAnyUserModelNotes();
 });
 
-// --- IPC: chat (streaming) ---
-interface ChatContentBlock {
-  type: "text" | "image";
-  text?: string;
-  mediaType?: string;
-  base64?: string;
-}
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: ChatContentBlock[];
-}
+// --- IPC: chat (streaming, multi-provedor — ADR-0006) ---
 interface ChatSendPayload {
   requestId: string;
   system: string;
   messages: ChatMessage[];
 }
 
-function toAnthropicContent(blocks: ChatContentBlock[]) {
-  return blocks.map((b) => {
-    if (b.type === "image") {
-      return {
-        type: "image" as const,
-        source: {
-          type: "base64" as const,
-          media_type: (b.mediaType ?? "image/png") as "image/png" | "image/jpeg" | "image/gif" | "image/webp",
-          data: b.base64 ?? "",
-        },
-      };
-    }
-    return { type: "text" as const, text: b.text ?? "" };
-  });
-}
-
 ipcMain.on("chat:send", async (event, payload: ChatSendPayload) => {
   const { requestId, system, messages } = payload;
   const sender = event.sender;
 
-  if (!anthropic) {
+  const providerId = await getActiveProvider();
+  const provider = PROVIDER_REGISTRY[providerId];
+  if (!provider) {
     sender.send("chat:error", {
       requestId,
-      message: "ANTHROPIC_API_KEY não configurada no ambiente do app. Defina a variável e reinicie.",
+      message: `Provedor '${providerId}' não encontrado. Abra Configurações e escolha um provedor.`,
+    });
+    return;
+  }
+
+  const model = await getActiveModel();
+  if (!model) {
+    sender.send("chat:error", {
+      requestId,
+      message: `Nenhum modelo selecionado para ${provider.label}. Abra Configurações e escolha um modelo.`,
+    });
+    return;
+  }
+
+  const apiKey = provider.requiresApiKey ? await getProviderKey(providerId) : "";
+  if (provider.requiresApiKey && !apiKey) {
+    sender.send("chat:error", {
+      requestId,
+      message: `Nenhuma chave configurada para ${provider.label}. Abra Configurações para adicionar uma.`,
     });
     return;
   }
 
   try {
-    const stream = anthropic.messages.stream({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1000,
+    // provider.sendMessage entrega o texto ACUMULADO a cada onDelta (ver
+    // providers/*.ts e seus testes); o canal chat:chunk existente espera um
+    // delta INCREMENTAL (o renderer já faz `buffer += delta`) — a conversão
+    // fica aqui pra não precisar tocar no contrato de IPC nem no renderer.
+    let sent = "";
+    const result = await provider.sendMessage({
+      apiKey: apiKey ?? "",
+      model,
       system,
-      messages: messages.map((m) => ({ role: m.role, content: toAnthropicContent(m.content) })),
+      messages,
+      onDelta: (buffer) => {
+        const delta = buffer.slice(sent.length);
+        sent = buffer;
+        if (delta) sender.send("chat:chunk", { requestId, delta });
+      },
     });
 
-    stream.on("text", (delta) => {
-      sender.send("chat:chunk", { requestId, delta });
-    });
-
-    const finalMessage = await stream.finalMessage();
-    const text = finalMessage.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
-
-    sender.send("chat:done", { requestId, text });
+    sender.send("chat:done", { requestId, text: result.text });
   } catch (err) {
     sender.send("chat:error", {
       requestId,
       message: err instanceof Error ? err.message : String(err),
     });
   }
+});
+
+// --- IPC: provedores (ADR-0006 §7) ---
+ipcMain.handle("providers:list", async () => {
+  return Object.values(PROVIDER_REGISTRY).map((p) => ({ id: p.id, label: p.label, requiresApiKey: p.requiresApiKey }));
+});
+
+ipcMain.handle("providers:list-models", async (_event, providerId: string) => {
+  const provider = getProvider(providerId);
+  const apiKey = provider.requiresApiKey ? await getProviderKey(providerId) : undefined;
+  return provider.listModels(apiKey);
+});
+
+ipcMain.handle("providers:validate-key", async (_event, providerId: string, apiKey: string) => {
+  return getProvider(providerId).validateKey(apiKey);
+});
+
+ipcMain.handle("providers:save-key", async (_event, providerId: string, apiKey: string) => {
+  await saveProviderKey(providerId, apiKey);
+});
+
+ipcMain.handle("providers:delete-key", async (_event, providerId: string) => {
+  await deleteProviderKey(providerId);
+});
+
+ipcMain.handle("providers:has-key", async (_event, providerId: string) => {
+  return hasProviderKey(providerId);
+});
+
+ipcMain.handle("providers:is-key-storage-secure", async () => {
+  return isKeyStorageSecure();
+});
+
+ipcMain.handle("providers:get-active", async () => {
+  return { providerId: await getActiveProvider(), model: await getActiveModel() };
+});
+
+ipcMain.handle("providers:set-active", async (_event, providerId: string, model: string) => {
+  await setActiveProvider(providerId);
+  await setActiveModel(model);
 });
