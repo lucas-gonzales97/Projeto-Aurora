@@ -130,11 +130,72 @@ npm run dist     # icons + build + electron-builder → release/
 
 A config do electron-builder está em `package.json` (`"build"`) —
 `win.icon`/`mac.icon`/`linux.icon` apontam para `build/icon.{ico,icns,png}`
-respectivamente. Testado localmente com `electron-builder --linux dir`
-(gera um app Linux "unpacked" sem instalador — suficiente pra validar a
-config; gerar `.exe`/`.dmg` de verdade depende de rodar em/rumo à
-plataforma alvo, ou de ferramentas cross-compile como `wine` para NSIS a
-partir do Linux, não configuradas aqui).
+respectivamente. Testado localmente com `electron-builder --linux dir` e com
+`npm run dist` (gera `.AppImage` + `.snap` no Linux) — ambos com o ícone
+oficial aplicado.
+
+### Build Windows (`.exe`) — precisa rodar no Windows nativo, não no WSL
+
+```bash
+npm run dist:win            # instalador NSIS (.exe)
+npm run dist:win-portable   # .exe portátil, sem instalador
+```
+
+**`wine` não está instalado neste WSL** (checado — `which wine`/`wine64`
+não encontram nada), e cross-compilar NSIS via Wine a partir do Linux é
+historicamente instável (fontes/ícone corrompidos, erros de assinatura
+silenciosos) mesmo quando funciona. Em vez de depender disso, rode o build
+Windows **direto no Windows, fora do WSL** — o próprio vault já mora no
+filesystem do Windows (`C:\Users\Pichau\Projeto-Aurora`, montado como
+`/mnt/c/Users/Pichau/Projeto-Aurora` aqui no WSL), então não precisa clonar
+de novo:
+
+1. **Instalar Node.js no Windows** (não o do WSL — precisa de um Node.js
+   nativo do Windows para compilar módulos nativos como `sharp` para o
+   target certo):
+   - Via `winget` (PowerShell como usuário normal):
+     ```powershell
+     winget install OpenJS.NodeJS.LTS
+     ```
+   - Ou baixando o instalador em https://nodejs.org (versão LTS) e rodando
+     o `.msi`.
+   - Feche e reabra o PowerShell depois de instalar, para o `PATH` pegar o
+     `node`/`npm` novos.
+
+2. **Abrir um PowerShell nativo do Windows** (não o terminal do VS Code
+   apontando pro WSL, não `wsl.exe` — o atalho "Windows PowerShell" ou
+   "Terminal" do menu Iniciar).
+
+3. **Entrar na pasta do projeto** (já existe — é a mesma pasta que o WSL
+   enxerga em `/mnt/c/...`, só que pelo caminho Windows nativo):
+   ```powershell
+   cd C:\Users\Pichau\Projeto-Aurora\aurora-desktop
+   ```
+
+4. **Reinstalar as dependências como Windows** — o `node_modules/` que já
+   existe aí foi montado rodando `npm install` de dentro do WSL (Linux), e
+   `sharp` tem binário nativo por plataforma; rodar `npm install` de novo
+   agora, mas a partir do PowerShell, garante os binários certos para
+   Windows:
+   ```powershell
+   npm install
+   ```
+   Se aparecer erro estranho de módulo nativo, apague `node_modules` e
+   rode `npm install` de novo:
+   ```powershell
+   Remove-Item -Recurse -Force node_modules
+   npm install
+   ```
+
+5. **Gerar o instalador**:
+   ```powershell
+   npm run dist:win
+   ```
+   (ou `npm run dist:win-portable` para o `.exe` avulso, sem instalador).
+
+6. **Artefato final** em `aurora-desktop\release\` — `Aurora Setup 0.1.0.exe`
+   (NSIS, `oneClick: false` — deixa escolher a pasta de instalação) e/ou
+   `Aurora 0.1.0.exe` (portátil).
 
 ## Pendências conhecidas (v0)
 
