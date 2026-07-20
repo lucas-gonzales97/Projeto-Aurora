@@ -7,7 +7,12 @@ import Anthropic from "@anthropic-ai/sdk";
 // (dist/main/index.js -> dist/ -> aurora-desktop/ -> raiz do vault).
 const VAULT_ROOT = path.resolve(__dirname, "../../..");
 const NOESIS_MCP_ENTRY = path.join(VAULT_ROOT, "noesis-mcp/dist/index.js");
-const ICON_PATH = path.join(__dirname, "../../assets/icon.svg");
+// build/icon.png é gerado a partir de assets/icon.svg via `npm run icons`
+// (script/generate-icons.mjs) — nativeImage não decodifica SVG de forma
+// confiável em todas as plataformas, então o ícone de janela em runtime usa
+// o PNG raster; o empacotamento (electron-builder) usa build/icon.{ico,icns,png}
+// diretamente, ver a seção "build" em package.json.
+const ICON_PATH = path.join(__dirname, "../../build/icon.png");
 
 const isDev = process.env.NODE_ENV === "development";
 const RENDERER_DEV_URL = "http://localhost:5173";
@@ -73,10 +78,10 @@ function createWindow() {
     resizable: false,
     alwaysOnTop: process.env.AURORA_ALWAYS_ON_TOP === "1",
     backgroundColor: "#0C1517",
-    // SVG é placeholder de design (ADR-0003 item 4); nativeImage não decodifica
-    // SVG em todas as plataformas, então cai para o ícone padrão do Electron
-    // silenciosamente quando isso acontece — trocar por .png/.ico/.icns real
-    // antes de empacotar.
+    // build/icon.png (gerado por `npm run icons` a partir de assets/icon.svg,
+    // o ícone oficial "Aurora Icon v2") pode não existir ainda em checkout
+    // limpo antes do primeiro `npm run icons`/`npm run dist` — cai pro ícone
+    // padrão do Electron nesse caso em vez de quebrar a janela.
     icon: iconImage.isEmpty() ? undefined : iconImage,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

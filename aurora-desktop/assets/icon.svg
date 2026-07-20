@@ -1,12 +1,63 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <!-- placeholder de design (ADR-0003 item 4) — trocar por ícone raster (.png/.ico/.icns) antes de empacotar -->
-  <rect width="256" height="256" rx="48" fill="#0C1517"/>
-  <circle cx="48" cy="128" r="14" fill="#C98B5F"/>
-  <circle cx="128" cy="64" r="14" fill="#C98B5F"/>
-  <circle cx="208" cy="128" r="18" fill="#8FDDBE"/>
-  <circle cx="140" cy="192" r="14" fill="#C98B5F"/>
-  <line x1="48" y1="128" x2="128" y2="64" stroke="#C98B5F" stroke-width="4" opacity="0.7"/>
-  <line x1="128" y1="64" x2="208" y2="128" stroke="#C98B5F" stroke-width="4" opacity="0.7"/>
-  <line x1="48" y1="128" x2="140" y2="192" stroke="#C98B5F" stroke-width="4" opacity="0.7"/>
-  <line x1="140" y1="192" x2="208" y2="128" stroke="#C98B5F" stroke-width="4" opacity="0.7"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Ícone oficial da Aurora ("Aurora Icon v2"), extraído do Design Component
+       original (~/Desktop/Aurora Icon v2.dc.html) — placeholders {{ bg }},
+       {{ copper }}, {{ phosphor }}, {{ bone }}, {{ cornerRadius }} resolvidos
+       para os valores-padrão do componente, que já batem com design/tokens.md. -->
+  <defs>
+    <filter id="aurGlow" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="34" />
+    </filter>
+    <filter id="aurGlowSm" x="-150%" y="-150%" width="400%" height="400%">
+      <feGaussianBlur stdDeviation="18" />
+    </filter>
+    <clipPath id="aurRounded">
+      <rect width="1024" height="1024" rx="232" ry="232" />
+    </clipPath>
+  </defs>
+  <g clip-path="url(#aurRounded)">
+    <rect width="1024" height="1024" fill="#0C1517" />
+    <!-- copper pathways: organic dendrites from the hub -->
+    <g stroke="#C98B5F" fill="none" stroke-linecap="round">
+      <path d="M430 470 C 500 430, 560 410, 622 366" stroke-width="7" opacity="0.85" />
+      <path d="M622 366 C 668 330, 700 296, 742 278 M622 366 C 660 380, 706 386, 748 372" stroke-width="4.5" opacity="0.55" />
+      <path d="M742 278 C 772 262, 792 240, 806 224" stroke-width="3" opacity="0.3" />
+      <path d="M430 470 C 380 400, 366 350, 380 282" stroke-width="5.5" opacity="0.6" />
+      <path d="M380 282 C 372 244, 350 220, 320 202 M380 282 C 402 248, 430 232, 452 224" stroke-width="3.5" opacity="0.35" />
+      <path d="M430 470 C 350 500, 300 540, 246 610" stroke-width="5.5" opacity="0.55" />
+      <path d="M246 610 C 216 646, 208 690, 214 724 M246 610 C 208 618, 178 616, 152 604" stroke-width="3.5" opacity="0.3" />
+      <path d="M430 470 C 480 560, 540 620, 630 668" stroke-width="6" opacity="0.7" />
+      <path d="M630 668 C 684 694, 720 736, 738 782 M630 668 C 676 668, 724 654, 758 626" stroke-width="4" opacity="0.42" />
+      <path d="M738 782 C 752 812, 754 838, 748 858" stroke-width="2.8" opacity="0.24" />
+      <path d="M430 470 C 400 522, 388 580, 398 646" stroke-width="4.5" opacity="0.4" />
+      <path d="M398 646 C 404 692, 394 730, 372 760" stroke-width="3" opacity="0.24" />
+      <path d="M430 470 C 496 470, 552 486, 606 522" stroke-width="4" opacity="0.35" />
+    </g>
+    <!-- resting copper nodes: junctions and branch tips -->
+    <g fill="#C98B5F">
+      <circle cx="380" cy="282" r="13" opacity="0.75" />
+      <circle cx="320" cy="202" r="7" opacity="0.4" />
+      <circle cx="452" cy="224" r="8" opacity="0.45" />
+      <circle cx="806" cy="224" r="6" opacity="0.32" />
+      <circle cx="748" cy="372" r="9" opacity="0.5" />
+      <circle cx="246" cy="610" r="12" opacity="0.65" />
+      <circle cx="214" cy="724" r="7" opacity="0.35" />
+      <circle cx="152" cy="604" r="6" opacity="0.32" />
+      <circle cx="738" cy="782" r="9" opacity="0.5" />
+      <circle cx="758" cy="626" r="8" opacity="0.45" />
+      <circle cx="748" cy="858" r="5" opacity="0.26" />
+      <circle cx="398" cy="646" r="9" opacity="0.5" />
+      <circle cx="372" cy="760" r="6" opacity="0.3" />
+      <circle cx="606" cy="522" r="8" opacity="0.4" />
+      <circle cx="630" cy="668" r="14" opacity="0.8" />
+      <circle cx="742" cy="278" r="10" opacity="0.55" />
+    </g>
+    <!-- the active connection: hub firing -->
+    <circle cx="430" cy="470" r="90" fill="#8FDDBE" opacity="0.18" filter="url(#aurGlow)" />
+    <circle cx="430" cy="470" r="44" fill="#8FDDBE" opacity="0.5" filter="url(#aurGlowSm)" />
+    <circle cx="430" cy="470" r="30" fill="#8FDDBE" />
+    <!-- the moment of insight: second node lit along the strong pathway -->
+    <circle cx="622" cy="366" r="48" fill="#8FDDBE" opacity="0.22" filter="url(#aurGlowSm)" />
+    <circle cx="622" cy="366" r="15" fill="#8FDDBE" />
+    <circle cx="470" cy="440" r="7" fill="#E7E2D6" opacity="0.9" />
+  </g>
 </svg>

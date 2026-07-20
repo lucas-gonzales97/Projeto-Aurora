@@ -36,7 +36,7 @@ npm run dev              # Vite dev server + Electron apontando pra ele
   o Claude Code usa) e fala com a API Anthropic via `@anthropic-ai/sdk`
   (streaming). A chave de API nunca é exposta ao renderer.
 - **Preload** (`src/main/preload.ts`): ponte `contextBridge` — expõe
-  `window.aurora.{chat,mcp,window}` ao renderer, sem `nodeIntegration`.
+  `window.aurora.{chat,mcp,window,onboarding}` ao renderer, sem `nodeIntegration`.
 - **Renderer** (`src/renderer/AuroraApp.tsx`): UI baseada fielmente no
   protótipo `aurorav0.jsx` (paleta, 3 tabs, `Metabolismo`, chips), com voz,
   visão, contexto do vault e opções numeradas clicáveis adicionados por cima.
@@ -106,11 +106,41 @@ tem 8 goals e 3 skills desde a Genesis, `aurora:is-first-run` retorna
 - **Opções numeradas**: linhas `"1. texto"`, `"2. texto"` etc. na resposta
   da Aurora também viram botões clicáveis abaixo da bolha.
 
+## Ícone e empacotamento
+
+O ícone oficial ("Aurora Icon v2") vive como fonte em `assets/icon.svg` — um
+SVG 1024×1024 extraído do Design Component original (mesma iconografia da
+`Metabolismo` do chat: hub disparando + trilhas de cobre), já nas cores de
+`design/tokens.md`. Ele não é usado diretamente pelo Electron/electron-builder
+(SVG não é um formato de ícone confiável em todas as plataformas) — em vez
+disso:
+
+```bash
+npm run icons   # gera build/icon.png (1024, runtime) + build/icon.ico (Windows) + build/icon.icns (macOS)
+```
+
+Rode de novo sempre que `assets/icon.svg` mudar. `build/icon.*` são
+versionados no repo (não regenerados automaticamente no `npm install`) para
+que `npm start`/`npm run dist` funcionem em um checkout limpo sem depender
+de `sharp`/`png2icons` (dependências nativas) estarem instaladas.
+
+```bash
+npm run dist     # icons + build + electron-builder → release/
+```
+
+A config do electron-builder está em `package.json` (`"build"`) —
+`win.icon`/`mac.icon`/`linux.icon` apontam para `build/icon.{ico,icns,png}`
+respectivamente. Testado localmente com `electron-builder --linux dir`
+(gera um app Linux "unpacked" sem instalador — suficiente pra validar a
+config; gerar `.exe`/`.dmg` de verdade depende de rodar em/rumo à
+plataforma alvo, ou de ferramentas cross-compile como `wine` para NSIS a
+partir do Linux, não configuradas aqui).
+
 ## Pendências conhecidas (v0)
 
-- Ícone da janela é um placeholder SVG (`assets/icon.svg`) — trocar por
-  `.png`/`.ico`/`.icns` real antes de empacotar para distribuição.
-- Sem empacotamento (`electron-builder`/`electron-forge`) configurado ainda
-  — `npm start` roda direto da árvore `dist/`.
 - `ANTHROPIC_API_KEY` fica em variável de ambiente; config de app com
   armazenamento seguro é trabalho futuro (ver ADR-0003, riscos).
+- Sem assinatura de código (`codeSigningIdentity`/notarization) configurada
+  — instaladores gerados hoje disparariam aviso de "app não verificado" no
+  Windows/macOS. Fora de escopo enquanto o app não é distribuído a ninguém
+  além do próprio Lucas (ver ADR-0003 §"Privacidade do conceito").
