@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- placeholder de design (ADR-0003 item 4) — trocar por ícone raster (.png/.ico/.icns) antes de empacotar -->
+  <rect width="256" height="256" rx="48" fill="#0C1517"/>
+  <circle cx="48" cy="128" r="14" fill="#C98B5F"/>
+  <circle cx="128" cy="64" r="14" fill="#C98B5F"/>
+  <circle cx="208" cy="128" r="18" fill="#8FDDBE"/>
+  <circle cx="140" cy="192" r="14" fill="#C98B5F"/>
+  <line x1="48" y1="128" x2="128" y2="64" stroke="#C98B5F" stroke-width="4" opacity="0.7"/>
+  <line x1="128" y1="64" x2="208" y2="128" stroke="#C98B5F" stroke-width="4" opacity="0.7"/>
+  <line x1="48" y1="128" x2="140" y2="192" stroke="#C98B5F" stroke-width="4" opacity="0.7"/>
+  <line x1="140" y1="192" x2="208" y2="128" stroke="#C98B5F" stroke-width="4" opacity="0.7"/>
+</svg>
