@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import Settings from "./Settings";
 
 /* ============================================================
    AURORA v0 — Aurora Desktop (Projeto NOESIS / LCA)
@@ -9,7 +10,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
    Ver decisions/ADR-0003-aurora-desktop.md.
    ============================================================ */
 
-const C = {
+// Exportado para Settings.tsx (tela de Configurações, ADR-0006 §6) reusar os
+// mesmos tokens em vez de duplicar a paleta — design/tokens.md é a fonte
+// única de verdade, um componente novo não deve redefinir cor por conta própria.
+export const C = {
   bg: "#0C1517",        // substrato PCB escuro (azul-esverdeado, não preto)
   panel: "#122023",     // painel
   panelUp: "#18292d",   // painel elevado
@@ -889,7 +893,7 @@ const TTS_STORAGE_KEY = "aurora:tts-enabled";
 
 export default function AuroraApp() {
   const [phase, setPhase] = useState<"loading" | "onboarding" | "app">("loading");
-  const [tab, setTab] = useState<"chat" | "painel" | "auto">("chat");
+  const [tab, setTab] = useState<"chat" | "painel" | "auto" | "settings">("chat");
   const [ttsEnabled, setTtsEnabled] = useState(() => {
     const saved = localStorage.getItem(TTS_STORAGE_KEY);
     return saved === null ? true : saved === "1";
@@ -917,10 +921,11 @@ export default function AuroraApp() {
 
   const chat = useAuroraChat(handleAssistantReply);
 
-  const tabs: { id: "chat" | "painel" | "auto"; label: string }[] = [
+  const tabs: { id: "chat" | "painel" | "auto" | "settings"; label: string }[] = [
     { id: "chat", label: "Conversa" },
     { id: "painel", label: "Painel" },
     { id: "auto", label: "Automações" },
+    { id: "settings", label: "Config" },
   ];
 
   return (
@@ -973,6 +978,7 @@ export default function AuroraApp() {
             </div>
             {tab === "painel" && <Painel />}
             {tab === "auto" && <Automacoes />}
+            {tab === "settings" && <Settings />}
           </>
         )}
       </main>

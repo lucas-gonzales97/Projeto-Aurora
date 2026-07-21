@@ -17,10 +17,8 @@ npm run build          # gera dist/main (Electron) e dist/renderer (Vite)
 
 Requer `noesis-mcp/dist/index.js` já buildado (`cd ../noesis-mcp && npm run
 build`). **A chave de API não é mais lida de variável de ambiente** (ver
-"Provedores multi-LLM" abaixo) — hoje, sem a tela de Configurações (ainda não
-existe, ver Pendências), a única forma de setar uma chave é chamando o IPC
-`window.aurora.providers.saveKey(providerId, apiKey)` manualmente pelo
-DevTools do renderer (`npm run dev` abre com DevTools já destacado).
+"Provedores multi-LLM" abaixo) — abra a aba **Config** no app pra colar/testar
+a chave de cada provedor e escolher o modelo ativo.
 
 ```bash
 npm start               # build + abre a janela Electron
@@ -49,10 +47,11 @@ npm run dev              # Vite dev server + Electron apontando pra ele
   `window.aurora.{chat,mcp,window,onboarding,providers}` ao renderer, sem
   `nodeIntegration`.
 - **Renderer** (`src/renderer/AuroraApp.tsx`): UI baseada fielmente no
-  protótipo `aurorav0.jsx` (paleta, 3 tabs, `Metabolismo`, chips), com voz,
-  visão, contexto do vault e opções numeradas clicáveis adicionados por cima.
-  **Ainda não tem tela de Configurações** pra usar o `window.aurora.providers.*`
-  novo — ver "Provedores multi-LLM" abaixo.
+  protótipo `aurorav0.jsx` (paleta, `Metabolismo`, chips), com voz, visão,
+  contexto do vault e opções numeradas clicáveis adicionados por cima. 4
+  abas: Conversa, Painel, Automações, **Config** (`src/renderer/Settings.tsx`,
+  ver "Provedores multi-LLM" abaixo) — reusa a paleta exportada de
+  `AuroraApp.tsx` (`export const C`) em vez de duplicá-la.
 
 ## IPC exposto (`window.aurora`)
 
@@ -88,7 +87,7 @@ era outra.
 > `decisions/ADR-0006-multi-provider-llm.md` (decisão de arquitetura)
 > primeiro — este bloco só resume o estado do código.
 
-**Feito:**
+**Feito (fase 3, parte 1/3 — camada de providers + IPC):**
 - `src/main/providers/types.ts` — contrato `LLMProvider` (`sendMessage`,
   `listModels`, `validateKey`).
 - `src/main/providers/openAICompatible.ts` + testes — cobre OpenAI, Groq,
@@ -106,28 +105,70 @@ era outra.
 - IPC `providers:*` completo (tabela acima) + exposto em `preload.ts` e
   tipado em `global.d.ts`.
 - 29 testes unitários (`npm test`), todos verdes; `tsc` limpo em main e
-  renderer; `vite build` limpo.
+  renderer; `vite build` limpo. **Só validado em nível de lógica/IPC nessa
+  parte — Electron de verdade não tinha rodado ainda (dev era WSL, sem
+  display).**
+
+**Feito (fase 3, parte 2/3 — tela de Configurações + primeiro run real no Electron):**
+- `src/renderer/Settings.tsx` (novo) — implementa ADR-0006 §6: lista os
+  provedores (`providers.list()`), por provedor com `requiresApiKey` mostra
+  campo de chave (`type="password"`) + botão "testar" (`validateKey` antes
+  de salvar) + botão "salvar"/"trocar"/"remover"; Ollama (não pede chave)
+  mostra "servidor local: respondendo/não respondendo" chamando
+  `validateKey(providerId, "")` (que já faz um GET real em `/models` — é
+  exatamente o check de "tá de pé?"); seletor de modelo (`listModels`) +
+  botão "usar" (`providers.setActive`) uma vez que o provedor está utilizável
+  (tem chave, ou não precisa); aviso vermelho quando
+  `isKeyStorageSecure()` é `false`; nota específica no card do Gemini sobre
+  o tier grátis usar as mensagens pra treino do Google (`research-llm-providers.md`).
+  Reusa a paleta exportada de `AuroraApp.tsx` (`export const C`) em vez de
+  duplicá-la num arquivo próprio.
+- `src/renderer/AuroraApp.tsx` — nova 4ª aba "Config" na tab bar (`tab` agora
+  é `"chat" | "painel" | "auto" | "settings"`), renderiza `<Settings />`.
+- **Bug real encontrado e corrigido ao rodar o Electron de verdade pela
+  primeira vez** (Windows nativo, não WSL): `tsconfig.main.json` compila o
+  main process pra `module: "commonjs"`, e nesse alvo o TypeScript rebaixa
+  `await import(x)` pra `require(x)` — o que quebra em runtime com
+  `ERR_REQUIRE_ESM` pra qualquer dependência `"type": "module"`-only.
+  Isso afetava **dois** pontos: `keyStore.ts` (`electron-store` v11, ESM-only)
+  e `index.ts` (`@modelcontextprotocol/sdk`, também ESM-only) — ambos
+  "pareciam" usar `import()` dinâmico corretamente no código-fonte, mas o
+  `.js` compilado continha `require()`. Isso quebrava **toda** chamada IPC
+  `providers:*` (inclusive `chat:send`, que agora depende do `keyStore`) e
+  também `mcp:*` (que depende do SDK MCP) — invisível pros 29 testes
+  unitários porque `keyStore.test.ts` injeta um backend fake via
+  `__setBackendForTests`, nunca exercitando o `getBackend()` real. Corrigido
+  com `src/main/esmImport.ts` (novo): um `new Function("specifier", "return
+  import(specifier)")` que esconde o `import()` da análise estática do
+  compilador — mesmo workaround documentado pelo próprio `electron-store`
+  pra consumidores CommonJS. `keyStore.ts` e `index.ts` agora usam
+  `dynamicImport(...)` em vez de `await import(...)` direto.
+- **Validado rodando o Electron de verdade** (Windows nativo, `npx electron .`):
+  aba Config abre, lista os 8 provedores, badge "ativo" no Anthropic (default),
+  campo de chave + testar/salvar funcionam — testado com uma chave Anthropic
+  fake e confirmado que o IPC `providers:validate-key` faz a chamada HTTP
+  real e devolve o erro 401 genuíno da API (`authentication_error`). Ollama
+  mostrou corretamente "não respondendo" (não há servidor local rodando
+  nesta máquina). `npm test` (29/29), `tsc` (main + renderer) e `npm run
+  build` continuam limpos depois da correção.
 
 **Não feito ainda (por aqui parou):**
-1. **Tela de Configurações no renderer** — `AuroraApp.tsx` não tem UI
-   nenhuma pros `window.aurora.providers.*` novos. Precisa: nova aba/tela
-   "Settings" na mesma paleta (`design/tokens.md`), lista dos provedores
-   (`providers.list()`), campo de chave por provedor (`type="password"`,
-   botão "testar" chamando `validateKey` antes de salvar), seletor de
-   provedor+modelo ativo (`providers.setActive`), aviso quando
-   `isKeyStorageSecure()` retorna `false`. Ver ADR-0006 §6 pro design já
-   pensado — só falta implementar.
-2. **Testes e2e com Playwright** — nada configurado ainda (`@playwright/test`
+1. **Testes e2e com Playwright** — nada configurado ainda (`@playwright/test`
    não é dependência do projeto). Precisa: instalar, configurar o launcher
    `_electron` (Playwright dirige o binário Electron direto, não precisa
    baixar Chromium/Firefox pra isso), escrever e2e de "configurar uma chave"
-   e "trocar de provedor/modelo". **Atenção:** este ambiente de dev (WSL sem
-   display) provavelmente não consegue *rodar* Electron de verdade nem sob
-   Playwright — escrever os testes é possível e útil, mas validar que eles
-   passam de fato só vai ser possível numa máquina com display real
-   (Windows nativo, por exemplo).
-3. Depois de 1 e 2 passando: consolidar (squash/organizar commits se fizer
-   sentido) e considerar se `AURORA_SYSTEM` (ainda hardcoded em
+   e "trocar de provedor/modelo" cobrindo o `Settings.tsx` novo. Agora que
+   já confirmamos que o Electron roda de verdade em Windows nativo, esses
+   testes também deveriam rodar de verdade aqui (não só ser escritos às
+   cegas como a nota antiga deste README dizia).
+2. **Testar cada provedor com uma chave real** — só Anthropic foi exercitado
+   (com chave fake, só pra validar o pipeline de erro). Falta testar
+   `sendMessage`/`listModels`/`validateKey` de verdade com Gemini, OpenAI,
+   Groq, Mistral, OpenRouter, DeepSeek (chave paga ou tier grátis) e Ollama
+   (com o servidor local rodando) — é o jeito de pegar qualquer bug de
+   parsing de streaming/erro específico de provedor que só aparece com
+   tráfego real (ver "riscos" em ADR-0006).
+3. Depois de 1 e 2: considerar se `AURORA_SYSTEM` (ainda hardcoded em
    `AuroraApp.tsx` com contexto pessoal do Lucas) deveria virar algo que o
    Settings também edita, ou se fica como está por enquanto.
 

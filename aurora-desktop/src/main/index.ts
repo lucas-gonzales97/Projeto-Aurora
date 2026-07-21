@@ -14,6 +14,7 @@ import {
   getActiveModel,
   setActiveModel,
 } from "./providers/keyStore.js";
+import dynamicImport from "./esmImport.js";
 
 // Vault root: aurora-desktop/ vive na raiz do vault, ao lado de noesis-mcp/
 // (dist/main/index.js -> dist/ -> aurora-desktop/ -> raiz do vault).
@@ -33,16 +34,18 @@ const RENDERER_BUILD_FILE = path.join(__dirname, "../renderer/index.html");
 let mainWindow: BrowserWindow | null = null;
 
 // --- noesis-mcp: cliente MCP falando stdio com o servidor do vault ---
-// O SDK do MCP é ESM-only; import() dinâmico é o jeito padrão de consumi-lo
-// a partir do main process em CommonJS (ver ADR-0003).
+// O SDK do MCP é ESM-only; `dynamicImport` (esmImport.ts) evita que o TS
+// rebaixe isso pra `require()` sob module:"commonjs" e quebre com
+// ERR_REQUIRE_ESM em runtime (mesmo problema resolvido em keyStore.ts pro
+// electron-store — ver ADR-0003).
 type McpClient = { callTool: (args: { name: string; arguments: Record<string, unknown> }) => Promise<any> };
 let mcpClientPromise: Promise<McpClient> | null = null;
 
 async function getMcpClient(): Promise<McpClient> {
   if (!mcpClientPromise) {
     mcpClientPromise = (async () => {
-      const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-      const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+      const { Client } = await dynamicImport("@modelcontextprotocol/sdk/client/index.js");
+      const { StdioClientTransport } = await dynamicImport("@modelcontextprotocol/sdk/client/stdio.js");
       const transport = new StdioClientTransport({
         command: "node",
         args: [NOESIS_MCP_ENTRY],

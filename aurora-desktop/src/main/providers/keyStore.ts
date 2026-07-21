@@ -1,4 +1,5 @@
 import { safeStorage } from "electron";
+import dynamicImport from "../esmImport.js";
 
 // Persistência de API keys por provedor — ver
 // decisions/ADR-0006-multi-provider-llm.md §4: a chave passa primeiro pelo
@@ -19,7 +20,11 @@ let backend: KeyStoreBackend | null = null;
 
 async function getBackend(): Promise<KeyStoreBackend> {
   if (backend) return backend;
-  const { default: Store } = await import("electron-store");
+  // dynamicImport (não `await import` direto) — ver esmImport.ts: electron-store
+  // v11 é ESM-only, e o `await import` normal seria rebaixado pro TS pra
+  // `require()` sob module:"commonjs" (tsconfig.main.json), quebrando em
+  // runtime com ERR_REQUIRE_ESM.
+  const { default: Store } = await dynamicImport("electron-store");
   // O tipo de ElectronStore<T> (via Conf<T>) não resolve get/set/delete sob
   // a resolução de módulo deste projeto (mesma classe de colisão de tipos do
   // fetch/Response — ver readJson em types.ts) — a store real tem esses
