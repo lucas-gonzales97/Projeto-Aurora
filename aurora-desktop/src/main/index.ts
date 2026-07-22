@@ -21,10 +21,35 @@ import {
 import { synthesizeSpeech, validateAzureSpeechConfig } from "./tts/azureSpeech.js";
 import dynamicImport from "./esmImport.js";
 
-// Vault root: aurora-desktop/ vive na raiz do vault, ao lado de noesis-mcp/
-// (dist/main/index.js -> dist/ -> aurora-desktop/ -> raiz do vault).
-const VAULT_ROOT = path.resolve(__dirname, "../../..");
-const NOESIS_MCP_ENTRY = path.join(VAULT_ROOT, "noesis-mcp/dist/index.js");
+// Vault root e local do noesis-mcp — dois cenários bem diferentes (ver
+// decisions/ADR-0008-vault-por-instalacao.md):
+//
+// DEV (`npx electron .` na árvore fonte): aurora-desktop/ vive dentro do
+// vault, ao lado de noesis-mcp/ (dist/main/index.js -> dist/ ->
+// aurora-desktop/ -> raiz do vault) — comportamento original, inalterado.
+//
+// EMPACOTADO (instalador/electron-builder): não existe "vault ao lado do
+// app" — Program Files não é gravável sem admin, e cada instalação é de
+// uma pessoa diferente, com o próprio vault. VAULT_ROOT vira uma pasta
+// dedicada em userData (gravável, sobrevive a reinstalação); noesis-mcp
+// (dist/ + node_modules/) vai empacotado via `extraResources` (ver "build"
+// em package.json) pra dentro de resources/noesis-mcp/, ao lado do
+// app.asar — não dentro dele, senão o Node não abriria os .js de lá como
+// arquivos soltos.
+const VAULT_ROOT = app.isPackaged
+  ? path.join(app.getPath("userData"), "vault")
+  : path.resolve(__dirname, "../../..");
+const NOESIS_MCP_DIR = app.isPackaged
+  ? path.join(process.resourcesPath, "noesis-mcp")
+  : path.join(VAULT_ROOT, "noesis-mcp");
+const NOESIS_MCP_ENTRY = path.join(NOESIS_MCP_DIR, "dist/index.js");
+
+// Garante que a pasta do vault existe antes de qualquer coisa tentar ler/
+// escrever nela — numa instalação nova (empacotada), userData/vault ainda
+// não existe no primeiro start, e listNoteFiles() do noesis-mcp lança
+// ENOENT se o diretório raiz nem existir (subpastas ele cria sozinho sob
+// demanda via mkdirSync recursive, a raiz em si não). No-op se já existir.
+fs.mkdirSync(VAULT_ROOT, { recursive: true });
 // build/icon.png é gerado a partir de assets/icon.svg via `npm run icons`
 // (script/generate-icons.mjs) — nativeImage não decodifica SVG de forma
 // confiável em todas as plataformas, então o ícone de janela em runtime usa
@@ -50,11 +75,19 @@ async function getMcpClient(): Promise<McpClient> {
   if (!mcpClientPromise) {
     mcpClientPromise = (async () => {
       const { Client } = await dynamicImport("@modelcontextprotocol/sdk/client/index.js");
-      const { StdioClientTransport } = await dynamicImport("@modelcontextprotocol/sdk/client/stdio.js");
+      const { StdioClientTransport, getDefaultEnvironment } = await dynamicImport("@modelcontextprotocol/sdk/client/stdio.js");
       const transport = new StdioClientTransport({
         command: "node",
         args: [NOESIS_MCP_ENTRY],
-        cwd: path.join(VAULT_ROOT, "noesis-mcp"),
+        cwd: NOESIS_MCP_DIR,
+        // Sem isso, o noesis-mcp calcularia VAULT_ROOT sozinho relativo a
+        // onde ele mesmo está (dois níveis acima de src/vault.ts) — certo
+        // em dev (aponta pro vault de verdade), errado no empacotado
+        // (apontaria pra dentro de resources/, não pra userData/vault).
+        // NOESIS_VAULT_ROOT é a env var que noesis-mcp/src/vault.ts já
+        // suporta pra sobrescrever esse cálculo — não precisou tocar no
+        // noesis-mcp pra isso, só usar o que já existia.
+        env: { ...getDefaultEnvironment(), NOESIS_VAULT_ROOT: VAULT_ROOT },
       });
       const client = new Client({ name: "aurora-desktop", version: "0.1.0" }, { capabilities: {} });
       await client.connect(transport);

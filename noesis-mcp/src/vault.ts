@@ -1,13 +1,10 @@
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import matter from "gray-matter";
 import { load as yamlLoad, dump as yamlDump, JSON_SCHEMA } from "js-yaml";
 import { parseDocument } from "yaml";
-
-const execFileAsync = promisify(execFile);
+import { validateFrontmatterFiles } from "./validateFrontmatter.js";
 
 // JSON_SCHEMA (unlike the default core schema) has no !!timestamp type, so a bare
 // `created: 2026-07-17` stays the string "2026-07-17" instead of becoming a JS Date
@@ -158,16 +155,12 @@ export function resolveNote(input: { id?: string; path?: string }): ParsedNote {
   throw new VaultPathError("Forneça 'id' ou 'path'.");
 }
 
-/** Runs the vault's single source of truth for frontmatter validity against specific files. */
+// Antes shelava pra `python3 scripts/validate_frontmatter.py` — quebrava em
+// qualquer máquina sem Python 3 (inviável pro Aurora Desktop empacotado,
+// ver validateFrontmatter.ts e decisions/ADR-0008-vault-por-instalacao.md).
+// Agora roda em processo, mesmas regras, sem dependência externa nenhuma.
 export async function runValidator(absPaths: string[]): Promise<{ ok: boolean; output: string }> {
-  const script = path.join(VAULT_ROOT, "scripts", "validate_frontmatter.py");
-  try {
-    const { stdout } = await execFileAsync("python3", [script, ...absPaths]);
-    return { ok: true, output: stdout.trim() };
-  } catch (err: any) {
-    const output = [err.stdout, err.stderr].filter(Boolean).join("\n").trim() || String(err.message ?? err);
-    return { ok: false, output };
-  }
+  return validateFrontmatterFiles(absPaths);
 }
 
 export function todayISO(): string {
