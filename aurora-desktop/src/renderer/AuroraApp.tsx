@@ -393,12 +393,44 @@ function useAuroraChat(onAssistantReply: (text: string) => void) {
   return { messages, busy, send };
 }
 
-function Chat({ chat }: { chat: ReturnType<typeof useAuroraChat> }) {
+function Chat({ chat, tab }: { chat: ReturnType<typeof useAuroraChat>; tab: string }) {
   const [input, setInput] = useState("");
   const [pendingImage, setPendingImage] = useState<ChatImage | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+
+  // Reflete o que está de fato ativo (motor/voz), não um valor fixo no
+  // código — refaz a leitura toda vez que volta pra aba Conversa, que é
+  // exatamente quando algo pode ter mudado na aba Config.
+  const [engineStatus, setEngineStatus] = useState("carregando…");
+  const [voiceStatus, setVoiceStatus] = useState("carregando…");
+
+  useEffect(() => {
+    if (tab !== "chat") return;
+    let cancelled = false;
+    Promise.all([
+      window.aurora.providers.getActive(),
+      window.aurora.providers.list(),
+      window.aurora.tts.hasConfig(),
+    ])
+      .then(([active, list, hasAzure]) => {
+        if (cancelled) return;
+        const provider = list.find((p) => p.id === active.providerId);
+        const label = provider?.label ?? active.providerId;
+        setEngineStatus(active.model ? `${label} · ${active.model}` : `${label} · sem modelo escolhido`);
+        setVoiceStatus(hasAzure ? "Azure (Francisca, natural)" : "local do Windows");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEngineStatus("indisponível");
+          setVoiceStatus("indisponível");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); },
     [chat.messages, chat.busy]);
@@ -546,7 +578,8 @@ function Chat({ chat }: { chat: ReturnType<typeof useAuroraChat> }) {
             }}>Enviar</button>
         </div>
         <div className="aur-mono" style={{ fontSize: 10, color: C.dim, marginTop: 6 }}>
-          memória: vault via noesis-mcp · motor: sonnet (main process) · voz: {stt.supported ? "disponível" : "indisponível neste navegador"}
+          memória: vault via noesis-mcp · motor: {engineStatus} · voz: {voiceStatus}
+          {!stt.supported && " · ditado indisponível neste navegador"}
         </div>
       </div>
     </div>
@@ -1046,7 +1079,7 @@ export default function AuroraApp() {
         {phase === "app" && (
           <>
             <div style={{ display: tab === "chat" ? "block" : "none", height: "100%" }}>
-              <Chat chat={chat} />
+              <Chat chat={chat} tab={tab} />
             </div>
             {tab === "painel" && <Painel />}
             {tab === "auto" && <Automacoes />}
