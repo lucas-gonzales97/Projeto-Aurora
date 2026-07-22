@@ -52,7 +52,11 @@ export class AnthropicProvider implements LLMProvider {
       .join("\n")
       .trim();
 
-    return { text: finalText || text };
+    return {
+      text: finalText || text,
+      inputTokens: finalMessage.usage?.input_tokens,
+      outputTokens: finalMessage.usage?.output_tokens,
+    };
   }
 
   async listModels(): Promise<ModelInfo[]> {

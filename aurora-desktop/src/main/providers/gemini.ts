@@ -49,6 +49,11 @@ export class GeminiProvider implements LLMProvider {
     const decoder = new TextDecoder();
     let buffer = "";
     let text = "";
+    // usageMetadata vem cumulativo a cada chunk (não só no último) — o valor
+    // mais recente já é o total da chamada até ali, então sobrescrever é
+    // suficiente, sem precisar detectar qual chunk é "o final".
+    let inputTokens: number | undefined;
+    let outputTokens: number | undefined;
 
     for (;;) {
       const { done, value } = await reader.read();
@@ -68,13 +73,17 @@ export class GeminiProvider implements LLMProvider {
             text += delta;
             params.onDelta?.(text);
           }
+          if (parsed?.usageMetadata) {
+            inputTokens = parsed.usageMetadata.promptTokenCount;
+            outputTokens = parsed.usageMetadata.candidatesTokenCount;
+          }
         } catch {
           // linha SSE incompleta — ignora, o próximo chunk completa
         }
       }
     }
 
-    return { text };
+    return { text, inputTokens, outputTokens };
   }
 
   async listModels(apiKey?: string): Promise<ModelInfo[]> {

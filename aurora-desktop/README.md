@@ -152,29 +152,72 @@ era outra.
   nesta máquina). `npm test` (29/29), `tsc` (main + renderer) e `npm run
   build` continuam limpos depois da correção.
 
+**Feito (fase 3, parte 3/3 — telemetria por chamada, MODEL-ROUTER.md §5):**
+- `src/main/providers/types.ts` — `SendMessageResult` ganhou `inputTokens`/
+  `outputTokens` opcionais (`undefined`, não `0`, quando o provedor não
+  informa — 0 seria dado falso).
+- `anthropic.ts` — vem de `finalMessage.usage.{input,output}_tokens` (SDK já
+  devolve isso). `gemini.ts` — vem do `usageMetadata.{prompt,candidates}TokenCount`
+  do último chunk SSE que o trouxer. `openAICompatible.ts` — passou a pedir
+  `stream_options: {include_usage: true}` no corpo da requisição (padrão
+  OpenAI, seguido por Groq/Mistral/OpenRouter/DeepSeek; servidor que não
+  reconhece o campo — ex.: builds antigos do Ollama — ignora, JSON solto,
+  não quebra a chamada) e lê `usage.{prompt,completion}_tokens` do chunk
+  final. 3 testes novos (32/32 no total) cobrindo os três caminhos de
+  extração.
+- `src/main/index.ts` — `chat:send` agora mede latência e chama
+  `logModelRouterTelemetry(...)` no sucesso **e** na falha, que grava via
+  `log_event` do noesis-mcp em `events/{dia}.jsonl` — o mesmo arquivo/formato
+  que MODEL-ROUTER.md §5 já especificava como dataset do roteador
+  automático futuro. `tier: "cloud-manual"` e `custo_estimado_usd: null` são
+  placeholders deliberados e documentados no código: o roteador T0–T5
+  (MODEL-ROUTER.md §1/§3) ainda não existe, e uma tabela de preço por
+  modelo/provedor mantida à mão desatualiza rápido — nenhum dos dois vale
+  fingir agora. Falha ao gravar telemetria (ex.: noesis-mcp offline) só
+  gera um `console.warn`, nunca quebra o chat.
+- **Validado rodando o Electron de verdade** (Windows nativo): configurada
+  uma chave Anthropic fake pela aba Config, ativado Claude Haiku 4.5,
+  enviada uma mensagem pelo chat — confirmado no arquivo real
+  `events/2026-07-22.jsonl` um evento `type: "model-router-telemetry"` com
+  o shape completo (`sucesso: false`, `latencia_ms`, `erro` com o 401 real
+  da API, `tokens_in`/`tokens_out: null` porque a chamada falhou antes de
+  qualquer uso ser reportado).
+
 **Não feito ainda (por aqui parou):**
 1. **Testes e2e com Playwright** — nada configurado ainda (`@playwright/test`
    não é dependência do projeto). Precisa: instalar, configurar o launcher
    `_electron` (Playwright dirige o binário Electron direto, não precisa
-   baixar Chromium/Firefox pra isso), escrever e2e de "configurar uma chave"
-   e "trocar de provedor/modelo" cobrindo o `Settings.tsx` novo. Agora que
-   já confirmamos que o Electron roda de verdade em Windows nativo, esses
-   testes também deveriam rodar de verdade aqui (não só ser escritos às
-   cegas como a nota antiga deste README dizia).
+   baixar Chromium/Firefox pra isso), escrever e2e de "configurar uma chave",
+   "trocar de provedor/modelo" e "uma chamada falha grava telemetria em
+   events/*.jsonl" cobrindo `Settings.tsx` + a telemetria nova. Já
+   confirmamos que o Electron roda de verdade em Windows nativo, então
+   esses testes também deveriam rodar de verdade aqui.
 2. **Testar cada provedor com uma chave real** — só Anthropic foi exercitado
-   (com chave fake, só pra validar o pipeline de erro). Falta testar
-   `sendMessage`/`listModels`/`validateKey` de verdade com Gemini, OpenAI,
-   Groq, Mistral, OpenRouter, DeepSeek (chave paga ou tier grátis) e Ollama
-   (com o servidor local rodando) — é o jeito de pegar qualquer bug de
-   parsing de streaming/erro específico de provedor que só aparece com
-   tráfego real (ver "riscos" em ADR-0006).
-3. Depois de 1 e 2: considerar se `AURORA_SYSTEM` (ainda hardcoded em
+   até agora (com chave fake, só pra validar o pipeline de erro e, agora,
+   o de telemetria). Falta testar `sendMessage`/`listModels`/`validateKey`
+   de verdade — com sucesso, não só falha — em Gemini, OpenAI, Groq,
+   Mistral, OpenRouter, DeepSeek (chave paga ou tier grátis) e Ollama (com
+   servidor local rodando). É o jeito de: (a) pegar bug de parsing de
+   streaming/erro específico de provedor que só aparece com tráfego real
+   (ver "riscos" em ADR-0006); (b) confirmar que `tokens_in`/`tokens_out`
+   realmente chegam preenchidos numa chamada bem-sucedida (só testamos o
+   caminho `null` da falha até aqui).
+3. **Protocolo de validação de uma semana** (o objetivo real de tudo isso —
+   ver MODEL-ROUTER.md §5 e ORCAMENTO-FUTURO.md): definir um critério de
+   "aprovado" por provedor (latência aceitável, zero falha de autenticação,
+   qualidade da resposta em português pra persona da Aurora) e trocar de
+   provedor a cada dia/sessão pela aba Config, usando a Aurora de verdade
+   no dia a dia. A telemetria em `events/*.jsonl` já é o dataset — falta só
+   ler/agregar isso ao final (uma query simples sobre os JSONL do período,
+   nada de dashboard por enquanto) pra comparar sucesso/latência por
+   provedor e decidir o(s) motor(es) vencedor(es).
+4. Depois de 1–3: considerar se `AURORA_SYSTEM` (ainda hardcoded em
    `AuroraApp.tsx` com contexto pessoal do Lucas) deveria virar algo que o
    Settings também edita, ou se fica como está por enquanto.
 
 **Como retomar:** `cd aurora-desktop && npm install && npm test` pra
-confirmar que a base ainda está verde, depois seguir pelo item 1 da lista
-acima.
+confirmar que a base ainda está verde (32 testes), depois seguir pelo item
+1 da lista acima.
 
 ## Onboarding epistêmico (ADR-0005)
 

@@ -43,8 +43,29 @@ describe("OpenAICompatibleProvider", () => {
     const body = JSON.parse(init.body);
     expect(body.model).toBe("llama-3.3-70b-versatile");
     expect(body.stream).toBe(true);
+    expect(body.stream_options).toEqual({ include_usage: true });
     expect(body.messages[0]).toEqual({ role: "system", content: "seja breve" });
     expect(body.messages[1].role).toBe("user");
+  });
+
+  it("propagates token usage from the final SSE chunk's usage field", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      sseResponse([
+        'data: {"choices":[{"delta":{"content":"oi"}}]}\n\n',
+        'data: {"choices":[{"delta":{}}],"usage":{"prompt_tokens":9,"completion_tokens":4}}\n\n',
+        "data: [DONE]\n\n",
+      ])
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new OpenAICompatibleProvider(config);
+    const result = await provider.sendMessage({
+      apiKey: "sk-test",
+      model: "llama-3.3-70b-versatile",
+      system: "",
+      messages: [{ role: "user", content: [{ type: "text", text: "oi" }] }],
+    });
+    expect(result.inputTokens).toBe(9);
+    expect(result.outputTokens).toBe(4);
   });
 
   it("converts image content blocks to the OpenAI image_url shape", async () => {

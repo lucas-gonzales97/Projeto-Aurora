@@ -25,6 +25,12 @@ export interface SendMessageParams {
 
 export interface SendMessageResult {
   text: string;
+  // Uso de tokens da chamada, quando o provedor expõe (nem todo dialeto
+  // OpenAI-compatible devolve isso no streaming) — alimenta a telemetria
+  // por chamada de MODEL-ROUTER.md §5 (tokens_in/out). `undefined`, não 0,
+  // quando o provedor não informou — 0 seria um dado falso.
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 export interface ModelInfo {

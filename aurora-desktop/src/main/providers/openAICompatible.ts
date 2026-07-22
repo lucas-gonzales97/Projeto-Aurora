@@ -55,6 +55,12 @@ export class OpenAICompatibleProvider implements LLMProvider {
       body: JSON.stringify({
         model: params.model,
         stream: true,
+        // Pede o chunk final de uso (padrão OpenAI, seguido por
+        // Groq/Mistral/OpenRouter/DeepSeek). Servidor que não reconhece o
+        // campo (ex.: builds mais antigos do Ollama) simplesmente ignora —
+        // é JSON solto, não quebra a chamada; só faz inputTokens/outputTokens
+        // ficarem undefined nesse caso.
+        stream_options: { include_usage: true },
         messages: this.toOpenAIMessages(params.system, params.messages),
       }),
     });
@@ -68,6 +74,8 @@ export class OpenAICompatibleProvider implements LLMProvider {
     const decoder = new TextDecoder();
     let buffer = "";
     let text = "";
+    let inputTokens: number | undefined;
+    let outputTokens: number | undefined;
 
     for (;;) {
       const { done, value } = await reader.read();
@@ -88,13 +96,17 @@ export class OpenAICompatibleProvider implements LLMProvider {
             text += delta;
             params.onDelta?.(text);
           }
+          if (parsed?.usage) {
+            inputTokens = parsed.usage.prompt_tokens;
+            outputTokens = parsed.usage.completion_tokens;
+          }
         } catch {
           // linha SSE incompleta/não-JSON — ignora, o próximo chunk completa o buffer
         }
       }
     }
 
-    return { text };
+    return { text, inputTokens, outputTokens };
   }
 
   async listModels(apiKey?: string): Promise<ModelInfo[]> {

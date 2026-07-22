@@ -63,6 +63,23 @@ describe("AnthropicProvider", () => {
     });
   });
 
+  it("propagates input/output token usage from the SDK's finalMessage.usage", async () => {
+    streamMock.on.mockReturnValue(streamMock);
+    streamMock.finalMessage.mockResolvedValue({
+      content: [{ type: "text", text: "Olá" }],
+      usage: { input_tokens: 12, output_tokens: 3 },
+    });
+    const provider = new AnthropicProvider();
+    const result = await provider.sendMessage({
+      apiKey: "sk-ant-test",
+      model: "claude-sonnet-5",
+      system: "",
+      messages: [{ role: "user", content: [{ type: "text", text: "oi" }] }],
+    });
+    expect(result.inputTokens).toBe(12);
+    expect(result.outputTokens).toBe(3);
+  });
+
   it("listModels returns a static list including the current default model", async () => {
     const provider = new AnthropicProvider();
     const models = await provider.listModels("sk-ant-test");

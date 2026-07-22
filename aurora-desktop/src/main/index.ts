@@ -59,6 +59,53 @@ async function getMcpClient(): Promise<McpClient> {
   return mcpClientPromise;
 }
 
+// --- Telemetria por chamada (MODEL-ROUTER.md §5) ---
+// Grava em events/{dia}.jsonl via log_event do noesis-mcp — é o mesmo
+// arquivo/formato JSONL que MODEL-ROUTER.md §5 já especifica como dataset
+// pro roteador automático futuro, só que hoje quem decide o motor é o
+// usuário (aba Config), não um roteador de verdade.
+//
+// `tier: "cloud-manual"` é um placeholder deliberado: o roteador T0–T5
+// (MODEL-ROUTER.md §1/§3) ainda não existe em código, e fingir uma
+// classificação T0–T5 aqui seria inventar um dado que o sistema não sabe
+// produzir de verdade. `custo_estimado_usd` fica sempre `null` pelo mesmo
+// motivo — calcular custo real exigiria manter uma tabela de preço por
+// modelo/provedor à mão (desatualiza rápido); fica pra quando os dados de
+// uso real (ver README "Provedores multi-LLM") justificarem o esforço.
+function logModelRouterTelemetry(entry: {
+  providerId: string;
+  model: string;
+  latencyMs: number;
+  success: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
+  error?: string;
+}): void {
+  const summary = entry.success
+    ? `${entry.providerId}/${entry.model} · ${entry.latencyMs}ms`
+    : `${entry.providerId}/${entry.model} · falhou: ${entry.error ?? "erro desconhecido"}`;
+  callMcpTool("log_event", {
+    type: "model-router-telemetry",
+    summary,
+    data: {
+      task_class: "chat-conversacional",
+      tier: "cloud-manual",
+      modelo: entry.model,
+      provedor: entry.providerId,
+      tokens_in: entry.inputTokens ?? null,
+      tokens_out: entry.outputTokens ?? null,
+      custo_estimado_usd: null,
+      sucesso: entry.success,
+      escalou_de: null,
+      latencia_ms: entry.latencyMs,
+      erro: entry.error ?? null,
+    },
+  }).catch((err) => {
+    // Nunca deixa telemetria quebrar o chat — só avisa no console do main.
+    console.warn("Telemetria: falha ao gravar log_event (noesis-mcp offline?):", err);
+  });
+}
+
 function firstTextBlock(result: any): string {
   const block = Array.isArray(result?.content)
     ? result.content.find((b: any) => b.type === "text")
@@ -217,6 +264,7 @@ ipcMain.on("chat:send", async (event, payload: ChatSendPayload) => {
     return;
   }
 
+  const startedAt = Date.now();
   try {
     // provider.sendMessage entrega o texto ACUMULADO a cada onDelta (ver
     // providers/*.ts e seus testes); o canal chat:chunk existente espera um
@@ -236,10 +284,23 @@ ipcMain.on("chat:send", async (event, payload: ChatSendPayload) => {
     });
 
     sender.send("chat:done", { requestId, text: result.text });
+    logModelRouterTelemetry({
+      providerId,
+      model,
+      latencyMs: Date.now() - startedAt,
+      success: true,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+    });
   } catch (err) {
-    sender.send("chat:error", {
-      requestId,
-      message: err instanceof Error ? err.message : String(err),
+    const message = err instanceof Error ? err.message : String(err);
+    sender.send("chat:error", { requestId, message });
+    logModelRouterTelemetry({
+      providerId,
+      model,
+      latencyMs: Date.now() - startedAt,
+      success: false,
+      error: message,
     });
   }
 });

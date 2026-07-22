@@ -59,6 +59,24 @@ describe("GeminiProvider", () => {
     expect(body.contents[0].parts[0]).toEqual({ inline_data: { mime_type: "image/png", data: "AAAA" } });
   });
 
+  it("propagates token usage from a chunk's usageMetadata", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      sseResponse([
+        'data: {"candidates":[{"content":{"parts":[{"text":"oi"}]}}],"usageMetadata":{"promptTokenCount":7,"candidatesTokenCount":2}}\n\n',
+      ])
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new GeminiProvider();
+    const result = await provider.sendMessage({
+      apiKey: "AIza-test",
+      model: "gemini-3-flash",
+      system: "",
+      messages: [{ role: "user", content: [{ type: "text", text: "oi" }] }],
+    });
+    expect(result.inputTokens).toBe(7);
+    expect(result.outputTokens).toBe(2);
+  });
+
   it("validateKey reports invalid on a 400 response", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: { message: "API key not valid" } }, 400));
     vi.stubGlobal("fetch", fetchMock);
