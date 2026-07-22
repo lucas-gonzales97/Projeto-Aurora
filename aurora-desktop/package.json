@@ -60,7 +60,8 @@
     "extraResources": [
       { "from": "../noesis-mcp/dist", "to": "noesis-mcp/dist" },
       { "from": "../noesis-mcp/node_modules", "to": "noesis-mcp/node_modules" },
-      { "from": "../noesis-mcp/package.json", "to": "noesis-mcp/package.json" }
+      { "from": "../noesis-mcp/package.json", "to": "noesis-mcp/package.json" },
+      { "from": "../ontology", "to": "vault-seed/ontology" }
     ],
     "win": {
       "icon": "build/icon.ico",

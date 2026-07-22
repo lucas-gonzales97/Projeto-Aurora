@@ -149,9 +149,40 @@ incluindo `validateFrontmatter.js`); `%APPDATA%\aurora-desktop\vault/`
 criado no primeiro launch; primeira chamada de chat do app instalado
 (Groq llama-3.3-70b, 526ms) gerou evento de telemetria via `log_event`
 do noesis-mcp em `vault/events/2026-07-22.jsonl` — MCP de ponta a ponta
-funcionando no cenário empacotado. Falta só o `create_note` disparar em
-produção (acontece quando o onboarding da instalação nova completar);
-a porta TS do validador já foi verificada em teste manual direto.
+funcionando no cenário empacotado. A porta TS do validador já foi
+verificada em teste manual direto.
+
+### Bug #4 — `ontology.yaml` ausente em vault novo (achado na validação)
+
+Rodando o onboarding no app instalado, ele "completou" na UI mas gravou
+**zero notas** (`onboarding-complete` logado com `structured:false`,
+`entities:[]`; `find` no vault: 0 `.md`). Reproduzido rodando `create_note`
+direto contra o bundle instalado apontando pra um vault novo: falha com
+`ENOENT ... open '.../ontology/ontology.yaml'`.
+
+Causa: `getEntityType` (`noesis-mcp/src/ontology.ts:15`) lê
+`{VAULT_ROOT}/ontology/ontology.yaml` em **todo** `create_note`/
+`create_relation`. Em dev o `VAULT_ROOT` é a raiz do checkout, que tem
+esse arquivo — por isso nunca apareceu. Num vault novo (empacotado) o
+arquivo não existe → `create_note` lança, e o renderer engole em
+`console.warn` (`writeOnboardingResult`): onboarding aparenta sucesso, nada
+persiste. Era o motivo real do "ela não lembra do onboarding".
+
+Fix: seed do vault. `ontology/` vai empacotado via `extraResources` pra
+`resources/vault-seed/ontology`, e `seedVaultIfNeeded()` no main copia
+`ontology.yaml` pro `VAULT_ROOT` no primeiro boot se faltar — idempotente,
+não-destrutivo (só cria o que falta, nunca sobrescreve nota do usuário),
+no-op em dev (raiz já tem `ontology/`). Verificado: com o seed,
+`create_note` grava goal/value/meta (validação ok) e `get_context` recupera
+(`goal-emprego-clt-remoto`, relevância 25, pra intent "emprego e trabalho")
+— loop de memória fecha ponta a ponta no bundle instalado.
+
+**Pendente (decisão de produto):** o bloco `CONTEXTO DO USUÁRIO` hardcoded
+em `AuroraApp.tsx` (goals reais do Lucas no `AURORA_SYSTEM`) faz a Aurora
+"lembrar" de coisas com vault vazio — confabulação, provada na conversa de
+validação. Fresh install de outra pessoa herdaria os goals do Lucas. Some
+do prompt (fonte única = vault via `get_context`, já cabeado em
+`AuroraApp.tsx:359`) numa próxima iteração.
 
 ## Alternativas rejeitadas
 

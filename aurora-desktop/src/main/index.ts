@@ -50,6 +50,36 @@ const NOESIS_MCP_ENTRY = path.join(NOESIS_MCP_DIR, "dist/index.js");
 // ENOENT se o diretório raiz nem existir (subpastas ele cria sozinho sob
 // demanda via mkdirSync recursive, a raiz em si não). No-op se já existir.
 fs.mkdirSync(VAULT_ROOT, { recursive: true });
+
+// Seed do vault: scaffold que TODO vault precisa mas que o onboarding NÃO
+// gera. Hoje: ontology/ontology.yaml — lido por getEntityType
+// (noesis-mcp/src/ontology.ts) em CADA create_note/create_relation. Num
+// vault novo e vazio esse arquivo não existe, então create_note lançava
+// ENOENT ("open .../ontology/ontology.yaml") e o onboarding não persistia
+// NADA: cada createNote falhava e virava só console.warn no renderer, o
+// onboarding "completava" na UI e o vault ficava com zero notas (ver
+// decisions/ADR-0008 §Validação — bug #4, achado depois do primeiro fix).
+// O seed vai empacotado via extraResources (-> resources/vault-seed) e é
+// copiado na primeira vez. Idempotente e não-destrutivo: só cria o que
+// falta, nunca sobrescreve nota do usuário. Em dev VAULT_ROOT é a raiz do
+// checkout, que já tem ontology/ — o guard existsSync sai cedo, sem tocar
+// em nada.
+const VAULT_SEED_DIR = app.isPackaged
+  ? path.join(process.resourcesPath, "vault-seed")
+  : path.resolve(__dirname, "../..");
+function seedVaultIfNeeded(): void {
+  const ontologyTarget = path.join(VAULT_ROOT, "ontology", "ontology.yaml");
+  if (fs.existsSync(ontologyTarget)) return;
+  const ontologySource = path.join(VAULT_SEED_DIR, "ontology", "ontology.yaml");
+  if (!fs.existsSync(ontologySource)) {
+    console.warn(`Seed do vault não encontrado em ${ontologySource} — create_note pode falhar (ontology.yaml ausente).`);
+    return;
+  }
+  fs.mkdirSync(path.dirname(ontologyTarget), { recursive: true });
+  fs.copyFileSync(ontologySource, ontologyTarget);
+  console.log(`Vault semeado: ontology.yaml -> ${ontologyTarget}`);
+}
+seedVaultIfNeeded();
 // build/icon.png é gerado a partir de assets/icon.svg via `npm run icons`
 // (script/generate-icons.mjs) — nativeImage não decodifica SVG de forma
 // confiável em todas as plataformas, então o ícone de janela em runtime usa
