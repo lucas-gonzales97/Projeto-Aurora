@@ -193,14 +193,63 @@ function useSpeechRecognition(onResult: (transcript: string) => void) {
 }
 
 /* ---------- Voz: síntese de fala (TTS) ---------- */
-function speak(text: string) {
+// speechSynthesis.getVoices() carrega de forma ASSÍNCRONA no Chromium/Electron
+// — chamar direto (como a versão antiga fazia) quase sempre pega a lista
+// ainda vazia na primeira fala da sessão, cai em voice=null, e o navegador
+// escolhe seu próprio default pra pt-BR (que nesta máquina é "Microsoft
+// Daniel", masculino — daí a voz sair errada mesmo com regex de voz
+// feminina no código). Aqui cacheia a lista uma vez, esperando o evento
+// voiceschanged quando necessário, com um timeout de segurança pra browsers
+// que nunca disparam o evento.
+let cachedVoices: SpeechSynthesisVoice[] = [];
+let voicesPromise: Promise<SpeechSynthesisVoice[]> | null = null;
+
+function loadVoices(): Promise<SpeechSynthesisVoice[]> {
+  if (!("speechSynthesis" in window)) return Promise.resolve([]);
+  const existing = window.speechSynthesis.getVoices();
+  if (existing.length > 0) {
+    cachedVoices = existing;
+    return Promise.resolve(existing);
+  }
+  if (voicesPromise) return voicesPromise;
+  voicesPromise = new Promise((resolve) => {
+    const finish = () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", finish);
+      cachedVoices = window.speechSynthesis.getVoices();
+      resolve(cachedVoices);
+    };
+    window.speechSynthesis.addEventListener("voiceschanged", finish);
+    setTimeout(finish, 1000); // rede de segurança — nem todo browser dispara o evento
+  });
+  return voicesPromise;
+}
+// Aquece o cache assim que o módulo carrega, pra primeira fala da sessão
+// já ter a lista pronta em vez de esperar o timeout de 1s.
+if (typeof window !== "undefined" && "speechSynthesis" in window) loadVoices();
+
+// Prioriza voz pt-BR NATURAL (as vozes neurais "Online (Natural)" do
+// Windows 11, quando instaladas — ver aurora-desktop/README.md "Voz da
+// Aurora") e feminina, nessa ordem: natural+feminina > só feminina >
+// só natural (gênero incerto pelo nome) > primeira pt-BR disponível.
+function pickPortugueseVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+  const ptVoices = voices.filter((v) => v.lang.toLowerCase().startsWith("pt"));
+  const isFemale = (v: SpeechSynthesisVoice) => /female|mulher|maria|luciana|francisca|thalita/i.test(v.name);
+  const isNatural = (v: SpeechSynthesisVoice) => /natural|online/i.test(v.name);
+  return (
+    ptVoices.find((v) => isNatural(v) && isFemale(v)) ??
+    ptVoices.find((v) => isFemale(v)) ??
+    ptVoices.find((v) => isNatural(v)) ??
+    ptVoices[0] ??
+    null
+  );
+}
+
+async function speak(text: string) {
   if (!text || !("speechSynthesis" in window)) return;
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = "pt-BR";
-  const voices = window.speechSynthesis.getVoices();
-  const ptVoices = voices.filter((v) => v.lang.toLowerCase().startsWith("pt"));
-  const femaleVoice = ptVoices.find((v) => /female|mulher|maria|luciana|francisca/i.test(v.name));
-  utter.voice = femaleVoice ?? ptVoices[0] ?? null;
+  const voices = cachedVoices.length > 0 ? cachedVoices : await loadVoices();
+  utter.voice = pickPortugueseVoice(voices);
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utter);
 }

@@ -253,8 +253,9 @@ tem 8 goals e 3 skills desde a Genesis, `aurora:is-first-run` retorna
 - **Microfone**: botão no campo de input, `SpeechRecognition` (`lang:
   'pt-BR'`), pulsa cobre enquanto grava, auto-envia ao parar.
 - **TTS**: toda resposta da Aurora é falada via `SpeechSynthesis`
-  (`lang: 'pt-BR'`, prioriza voz feminina se disponível); toggle no header,
-  estado em `localStorage`.
+  (`lang: 'pt-BR'`, prioriza voz feminina e, quando instalada, uma voz
+  "natural"/neural — ver "Voz da Aurora" abaixo); toggle no header, estado
+  em `localStorage`.
 - **Visão**: anexo por clipe (file picker), `Ctrl+V` (clipboard) ou
   drag-and-drop na janela do chat — vira thumbnail na bolha do usuário e
   `image` content block (base64) na chamada à API.
@@ -263,6 +264,40 @@ tem 8 goals e 3 skills desde a Genesis, `aurora:is-first-run` retorna
   resposta, `log_event` registra a interação como evidência no vault.
 - **Opções numeradas**: linhas `"1. texto"`, `"2. texto"` etc. na resposta
   da Aurora também viram botões clicáveis abaixo da bolha.
+
+## Voz da Aurora
+
+`speak()` em `AuroraApp.tsx` escolhe a voz pt-BR na ordem: **natural +
+feminina** (melhor caso) > **feminina** (mesmo que não-natural) > **natural**
+(gênero incerto pelo nome) > primeira voz pt-BR disponível. "Natural" aqui
+significa qualquer nome de voz contendo `natural`/`online` — é assim que o
+Windows 11 nomeia as vozes neurais modernas (bem mais naturais que as vozes
+SAPI5 legadas tipo "Microsoft Maria").
+
+**Bug corrigido:** a versão original chamava
+`window.speechSynthesis.getVoices()` direto, sem esperar a lista carregar
+— no Chromium/Electron essa lista carrega de forma assíncrona, então a
+primeira fala da sessão quase sempre pegava a lista vazia, caía em
+`voice = null`, e o navegador escolhia seu próprio default pra pt-BR (nesta
+máquina, "Microsoft Daniel", masculino — daí a voz sair errada mesmo com a
+lógica de preferência por voz feminina já existindo no código). Agora
+`loadVoices()` cacheia a lista e espera o evento `voiceschanged` (com
+timeout de segurança de 1s) antes da primeira fala.
+
+**Ter uma voz de qualidade instalada é responsabilidade do Windows, não do
+app.** Se `speechSynthesis.getVoices()` só devolve vozes SAPI5 legadas
+(`Microsoft Maria`/`Microsoft Daniel`), instale uma voz neural:
+`Configurações` → `Hora e Idioma` → `Fala` → `Vozes` → `Adicionar vozes` →
+buscar "Português (Brasil)" e adicionar a(s) voz(es) natural(is)
+disponível(is). Depois de instalada, o app já passa a usá-la automaticamente
+(prioridade "natural + feminina" no `pickPortugueseVoice()`) — não precisa
+mudar nada no código. Confirmar quais vozes uma máquina tem instaladas via
+PowerShell:
+```powershell
+Add-Type -AssemblyName System.Speech
+(New-Object System.Speech.Synthesis.SpeechSynthesizer).GetInstalledVoices() |
+  ForEach-Object { $_.VoiceInfo } | Select-Object Name, Culture, Gender
+```
 
 ## Ícone e empacotamento
 
@@ -357,9 +392,12 @@ de novo:
 
 ## Pendências conhecidas (v0)
 
-- Tela de Configurações e testes e2e do fluxo multi-provedor — ver seção
-  "Provedores multi-LLM (ADR-0006) — EM ANDAMENTO" acima, é o trabalho em
-  aberto agora.
+- Testes e2e do fluxo multi-provedor (Playwright) e protocolo de validação
+  de uma semana — ver seção "Provedores multi-LLM (ADR-0006) — EM ANDAMENTO"
+  acima, é o trabalho em aberto agora (a tela de Configurações em si já
+  está pronta e validada com um provedor real).
+- Sem voz neural/natural instalada por padrão — depende do que o Windows
+  de cada máquina tem instalado, ver "Voz da Aurora" acima.
 - Sem assinatura de código (`codeSigningIdentity`/notarization) configurada
   — instaladores gerados hoje disparariam aviso de "app não verificado" no
   Windows/macOS. Fora de escopo enquanto o app não é distribuído a ninguém
