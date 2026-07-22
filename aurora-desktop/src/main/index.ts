@@ -13,7 +13,12 @@ import {
   setActiveProvider,
   getActiveModel,
   setActiveModel,
+  saveTtsConfig,
+  getTtsConfig,
+  deleteTtsConfig,
+  hasTtsConfig,
 } from "./providers/keyStore.js";
+import { synthesizeSpeech, validateAzureSpeechConfig } from "./tts/azureSpeech.js";
 import dynamicImport from "./esmImport.js";
 
 // Vault root: aurora-desktop/ vive na raiz do vault, ao lado de noesis-mcp/
@@ -343,4 +348,29 @@ ipcMain.handle("providers:get-active", async () => {
 ipcMain.handle("providers:set-active", async (_event, providerId: string, model: string) => {
   await setActiveProvider(providerId);
   await setActiveModel(model);
+});
+
+// --- IPC: TTS em nuvem (Azure AI Speech — ADR-0007) ---
+ipcMain.handle("tts:save-config", async (_event, subscriptionKey: string, region: string) => {
+  await saveTtsConfig(subscriptionKey, region);
+});
+
+ipcMain.handle("tts:delete-config", async () => {
+  await deleteTtsConfig();
+});
+
+ipcMain.handle("tts:has-config", async () => {
+  return hasTtsConfig();
+});
+
+ipcMain.handle("tts:validate", async (_event, subscriptionKey: string, region: string) => {
+  return validateAzureSpeechConfig(subscriptionKey, region);
+});
+
+ipcMain.handle("tts:speak", async (_event, text: string) => {
+  const config = await getTtsConfig();
+  if (!config) {
+    throw new Error("Azure Speech não configurado. Abra Configurações.");
+  }
+  return synthesizeSpeech({ ...config, text });
 });

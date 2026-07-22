@@ -18,6 +18,10 @@ const {
   setActiveProvider,
   getActiveModel,
   setActiveModel,
+  saveTtsConfig,
+  getTtsConfig,
+  deleteTtsConfig,
+  hasTtsConfig,
   __setBackendForTests,
 } = await import("./keyStore.js");
 
@@ -106,5 +110,44 @@ describe("keyStore", () => {
     await setActiveModel("llama-3.3-70b-versatile");
     expect(await getActiveProvider()).toBe("groq");
     expect(await getActiveModel()).toBe("llama-3.3-70b-versatile");
+  });
+
+  it("saveTtsConfig encrypts the subscription key and stores the region in plain text", async () => {
+    safeStorageMock.isEncryptionAvailable.mockReturnValue(true);
+    const backend = fakeBackend();
+    __setBackendForTests(backend);
+
+    await saveTtsConfig("azure-sk-123", "brazilsouth");
+    expect(safeStorageMock.encryptString).toHaveBeenCalledWith("azure-sk-123");
+    expect(backend._data.get("tts.azureSpeech.key")!.startsWith("enc:")).toBe(true);
+    expect(backend._data.get("tts.azureSpeech.region")).toBe("brazilsouth");
+
+    expect(await getTtsConfig()).toEqual({ subscriptionKey: "azure-sk-123", region: "brazilsouth" });
+  });
+
+  it("getTtsConfig returns undefined when nothing is configured, or only the key/region is set", async () => {
+    safeStorageMock.isEncryptionAvailable.mockReturnValue(true);
+    const backend = fakeBackend();
+    __setBackendForTests(backend);
+    expect(await getTtsConfig()).toBeUndefined();
+
+    backend._data.set("tts.azureSpeech.key", "enc:whatever");
+    expect(await getTtsConfig()).toBeUndefined(); // falta region
+  });
+
+  it("deleteTtsConfig removes both the key and the region", async () => {
+    safeStorageMock.isEncryptionAvailable.mockReturnValue(true);
+    __setBackendForTests(fakeBackend());
+    await saveTtsConfig("azure-sk-123", "brazilsouth");
+    await deleteTtsConfig();
+    expect(await getTtsConfig()).toBeUndefined();
+  });
+
+  it("hasTtsConfig reports presence without exposing the key", async () => {
+    safeStorageMock.isEncryptionAvailable.mockReturnValue(true);
+    __setBackendForTests(fakeBackend());
+    expect(await hasTtsConfig()).toBe(false);
+    await saveTtsConfig("azure-sk-123", "brazilsouth");
+    expect(await hasTtsConfig()).toBe(true);
   });
 });

@@ -38,4 +38,11 @@ contextBridge.exposeInMainWorld("aurora", {
     getActive: () => ipcRenderer.invoke("providers:get-active") as Promise<{ providerId: string; model: string }>,
     setActive: (providerId: string, model: string) => ipcRenderer.invoke("providers:set-active", providerId, model),
   },
+  tts: {
+    saveConfig: (subscriptionKey: string, region: string) => ipcRenderer.invoke("tts:save-config", subscriptionKey, region),
+    deleteConfig: () => ipcRenderer.invoke("tts:delete-config"),
+    hasConfig: () => ipcRenderer.invoke("tts:has-config") as Promise<boolean>,
+    validate: (subscriptionKey: string, region: string) => ipcRenderer.invoke("tts:validate", subscriptionKey, region),
+    speak: (text: string) => ipcRenderer.invoke("tts:speak", text) as Promise<{ audioBase64: string; mimeType: string }>,
+  },
 });

@@ -61,6 +61,13 @@ interface AuroraBridge {
     getActive: () => Promise<{ providerId: string; model: string }>;
     setActive: (providerId: string, model: string) => Promise<void>;
   };
+  tts: {
+    saveConfig: (subscriptionKey: string, region: string) => Promise<void>;
+    deleteConfig: () => Promise<void>;
+    hasConfig: () => Promise<boolean>;
+    validate: (subscriptionKey: string, region: string) => Promise<{ valid: boolean; error?: string }>;
+    speak: (text: string) => Promise<{ audioBase64: string; mimeType: string }>;
+  };
 }
 
 // Web Speech API — não faz parte do lib.dom.d.ts padrão do TypeScript.

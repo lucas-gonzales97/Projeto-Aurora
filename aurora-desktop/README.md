@@ -41,11 +41,15 @@ npm run dev              # Vite dev server + Electron apontando pra ele
   `AnthropicProvider`/`GeminiProvider` (shape próprio) e
   `OpenAICompatibleProvider` (uma classe, várias instâncias — OpenAI, Groq,
   Mistral, OpenRouter, Ollama, DeepSeek), `keyStore.ts` (persistência de
-  chave via `electron-store` + `safeStorage`), `index.ts` (registro +
-  `getProvider(id)`). Testado por unidade com `vitest` (`npm test`).
+  chave via `electron-store` + `safeStorage` — também guarda a config do
+  Azure Speech, ver abaixo), `index.ts` (registro + `getProvider(id)`).
+  Testado por unidade com `vitest` (`npm test`).
+- **TTS** (`src/main/tts/`): `azureSpeech.ts` — síntese de voz natural via
+  Azure AI Speech (`pt-BR-FranciscaNeural`), ver "Voz da Aurora" abaixo e
+  `decisions/ADR-0007-tts-azure-speech.md`.
 - **Preload** (`src/main/preload.ts`): ponte `contextBridge` — expõe
-  `window.aurora.{chat,mcp,window,onboarding,providers}` ao renderer, sem
-  `nodeIntegration`.
+  `window.aurora.{chat,mcp,window,onboarding,providers,tts}` ao renderer,
+  sem `nodeIntegration`.
 - **Renderer** (`src/renderer/AuroraApp.tsx`): UI baseada fielmente no
   protótipo `aurorav0.jsx` (paleta, `Metabolismo`, chips), com voz, visão,
   contexto do vault e opções numeradas clicáveis adicionados por cima. 4
@@ -79,6 +83,10 @@ era outra.
 | `providers:has-key` | renderer→main (invoke) | `true`/`false` — nunca devolve a chave em si |
 | `providers:is-key-storage-secure` | renderer→main (invoke) | reflete `safeStorage.isEncryptionAvailable()` — UI deveria avisar se `false` |
 | `providers:get-active` / `providers:set-active` | renderer→main (invoke) | lê/grava `{providerId, model}` ativos (default: `anthropic`, sem modelo) |
+| `tts:save-config` / `tts:delete-config` | renderer→main (invoke) | grava/remove subscription key + region do Azure Speech via `keyStore` |
+| `tts:has-config` | renderer→main (invoke) | `true`/`false` — nunca devolve a chave em si |
+| `tts:validate` | renderer→main (invoke) | testa key+region com uma síntese mínima real, sem salvar |
+| `tts:speak` | renderer→main (invoke) | sintetiza o texto pedido (voz `pt-BR-FranciscaNeural`), devolve `{audioBase64, mimeType}` |
 
 ## Provedores multi-LLM (ADR-0006) — EM ANDAMENTO
 
@@ -267,14 +275,40 @@ tem 8 goals e 3 skills desde a Genesis, `aurora:is-first-run` retorna
 
 ## Voz da Aurora
 
-`speak()` em `AuroraApp.tsx` escolhe a voz pt-BR na ordem: **natural +
-feminina** (melhor caso) > **feminina** (mesmo que não-natural) > **natural**
-(gênero incerto pelo nome) > primeira voz pt-BR disponível. "Natural" aqui
-significa qualquer nome de voz contendo `natural`/`online` — é assim que o
-Windows 11 nomeia as vozes neurais modernas (bem mais naturais que as vozes
-SAPI5 legadas tipo "Microsoft Maria").
+Duas camadas, nessa ordem (ver `decisions/ADR-0007-tts-azure-speech.md`
+pra decisão completa):
 
-**Bug corrigido:** a versão original chamava
+**1. Azure AI Speech (voz natural, se configurada)** — `speak()` em
+`AuroraApp.tsx` primeiro checa `window.aurora.tts.hasConfig()`; se
+configurado (aba Config → "Azure Speech"), chama `tts:speak` no main
+process, que sintetiza via API (`pt-BR-FranciscaNeural`, ver
+`src/main/tts/azureSpeech.ts`) e toca o MP3 devolvido. Essa é a mesma voz
+"Francisca" do Narrator do Windows — mas **o Narrator não expõe suas vozes
+naturais a nenhum outro app** (confirmado contra doc oficial da Microsoft,
+não é limitação deste código nem coisa de configurar direito nas
+Configurações do Windows — não tem caminho oficial pra isso fora do
+Narrator). É por isso que o app fala com a Azure diretamente em vez de só
+usar a voz "certa" já instalada no sistema.
+
+Setup (aba Config → seção "Voz da Aurora"): criar um recurso **Speech**
+gratuito (tier F0) no [Azure Portal](https://portal.azure.com) — precisa de
+conta Azure (cartão só pra verificação de identidade; o tier F0 não cobra,
+500 mil caracteres/mês), copiar `KEY 1` e a região do recurso (ex.:
+`brazilsouth`) em "Keys and Endpoint", colar nos dois campos da aba Config,
+"testar" antes de salvar.
+
+**2. `speechSynthesis` local do Windows (fallback)** — usado quando o Azure
+não está configurado, ou se a chamada falhar por qualquer motivo (rede,
+quota, chave inválida) — a Aurora nunca fica muda por causa de um problema
+de rede. `pickPortugueseVoice()` escolhe entre as vozes SAPI5 instaladas
+localmente na ordem: natural+feminina > feminina > natural > primeira
+pt-BR disponível ("natural" aqui é só heurística de nome, já que — como
+descrito acima — o Windows não costuma ter voz natural de terceiro-app
+instalada de verdade). Nesta máquina, sem Azure configurado, isso resolve
+pra "Microsoft Maria" (a única voz feminina SAPI5 instalada — funcional,
+mas robótica, não confundir com a Francisca da Azure).
+
+**Bug corrigido nesse caminho local:** a versão original chamava
 `window.speechSynthesis.getVoices()` direto, sem esperar a lista carregar
 — no Chromium/Electron essa lista carrega de forma assíncrona, então a
 primeira fala da sessão quase sempre pegava a lista vazia, caía em
@@ -284,15 +318,8 @@ lógica de preferência por voz feminina já existindo no código). Agora
 `loadVoices()` cacheia a lista e espera o evento `voiceschanged` (com
 timeout de segurança de 1s) antes da primeira fala.
 
-**Ter uma voz de qualidade instalada é responsabilidade do Windows, não do
-app.** Se `speechSynthesis.getVoices()` só devolve vozes SAPI5 legadas
-(`Microsoft Maria`/`Microsoft Daniel`), instale uma voz neural:
-`Configurações` → `Hora e Idioma` → `Fala` → `Vozes` → `Adicionar vozes` →
-buscar "Português (Brasil)" e adicionar a(s) voz(es) natural(is)
-disponível(is). Depois de instalada, o app já passa a usá-la automaticamente
-(prioridade "natural + feminina" no `pickPortugueseVoice()`) — não precisa
-mudar nada no código. Confirmar quais vozes uma máquina tem instaladas via
-PowerShell:
+Conferir quais vozes SAPI5 locais uma máquina tem instaladas (só afeta o
+fallback, não o caminho Azure):
 ```powershell
 Add-Type -AssemblyName System.Speech
 (New-Object System.Speech.Synthesis.SpeechSynthesizer).GetInstalledVoices() |
@@ -396,8 +423,11 @@ de novo:
   de uma semana — ver seção "Provedores multi-LLM (ADR-0006) — EM ANDAMENTO"
   acima, é o trabalho em aberto agora (a tela de Configurações em si já
   está pronta e validada com um provedor real).
-- Sem voz neural/natural instalada por padrão — depende do que o Windows
-  de cada máquina tem instalado, ver "Voz da Aurora" acima.
+- Voz natural (Azure Speech) exige setup manual do usuário (conta Azure +
+  chave) — sem isso configurado, o app cai pra voz local SAPI5, que nesta
+  máquina é robótica ("Microsoft Maria"). Ver "Voz da Aurora" acima pro
+  passo a passo. Ainda não testado com uma chave Azure real de ponta a
+  ponta (só o fallback local e a UI foram validados ao vivo).
 - Sem assinatura de código (`codeSigningIdentity`/notarization) configurada
   — instaladores gerados hoje disparariam aviso de "app não verificado" no
   Windows/macOS. Fora de escopo enquanto o app não é distribuído a ninguém

@@ -103,3 +103,42 @@ export async function setActiveModel(model: string): Promise<void> {
   const store = await getBackend();
   store.set("activeModel", model);
 }
+
+// Config do Azure Speech (TTS em nuvem, ver ADR-0007-tts-azure-speech.md) —
+// reusa este mesmo store/backend (electron-store + safeStorage) em vez de
+// um novo, é o mesmo "config local cifrada" que as chaves de provider LLM
+// já usam, só um caso de uso diferente. Region não é segredo, fica em
+// texto plano; a subscription key passa pelo mesmo enc:/plain: das chaves
+// de provider.
+export async function saveTtsConfig(subscriptionKey: string, region: string): Promise<void> {
+  const store = await getBackend();
+  const value = safeStorage.isEncryptionAvailable()
+    ? `enc:${safeStorage.encryptString(subscriptionKey).toString("base64")}`
+    : `plain:${subscriptionKey}`;
+  store.set("tts.azureSpeech.key", value);
+  store.set("tts.azureSpeech.region", region);
+}
+
+export async function getTtsConfig(): Promise<{ subscriptionKey: string; region: string } | undefined> {
+  const store = await getBackend();
+  const raw = store.get("tts.azureSpeech.key");
+  const region = store.get("tts.azureSpeech.region");
+  if (!raw || !region) return undefined;
+  let subscriptionKey: string | undefined;
+  if (raw.startsWith("enc:")) subscriptionKey = safeStorage.decryptString(Buffer.from(raw.slice(4), "base64"));
+  else if (raw.startsWith("plain:")) subscriptionKey = raw.slice(6);
+  if (!subscriptionKey) return undefined;
+  return { subscriptionKey, region };
+}
+
+export async function deleteTtsConfig(): Promise<void> {
+  const store = await getBackend();
+  store.delete("tts.azureSpeech.key");
+  store.delete("tts.azureSpeech.region");
+}
+
+// Mesma regra do hasProviderKey: só presença, nunca a chave em si.
+export async function hasTtsConfig(): Promise<boolean> {
+  const store = await getBackend();
+  return Boolean(store.get("tts.azureSpeech.key")) && Boolean(store.get("tts.azureSpeech.region"));
+}

@@ -86,6 +86,257 @@ export default function Settings() {
           onActivated={refresh}
         />
       ))}
+
+      <p
+        className="aur-display"
+        style={{ color: C.dim, fontSize: 12, fontWeight: 600, margin: "14px 2px 8px" }}
+      >
+        VOZ DA AURORA
+      </p>
+      <AzureSpeechCard />
+    </div>
+  );
+}
+
+// Config do TTS em nuvem (Azure AI Speech — ver
+// decisions/ADR-0007-tts-azure-speech.md). Independente dos providers de
+// LLM acima: chave + region em vez de só chave, e não tem "ativo/modelo" —
+// é usado ou não é (fallback pra voz local do Windows quando ausente).
+function AzureSpeechCard() {
+  const [hasConfig, setHasConfig] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [keyDraft, setKeyDraft] = useState("");
+  const [regionDraft, setRegionDraft] = useState("");
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [playError, setPlayError] = useState("");
+
+  useEffect(() => {
+    window.aurora.tts.hasConfig().then(setHasConfig);
+  }, []);
+
+  async function handleTest() {
+    if (!keyDraft || !regionDraft) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await window.aurora.tts.validate(keyDraft, regionDraft);
+      setTestResult(
+        res.valid ? { ok: true, message: "configuração válida" } : { ok: false, message: res.error ?? "configuração inválida" }
+      );
+    } catch (err) {
+      setTestResult({ ok: false, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function handleSave() {
+    if (!keyDraft || !regionDraft) return;
+    setSaving(true);
+    try {
+      await window.aurora.tts.saveConfig(keyDraft, regionDraft);
+      setHasConfig(true);
+      setKeyDraft("");
+      setRegionDraft("");
+      setEditing(false);
+      setTestResult(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRemove() {
+    await window.aurora.tts.deleteConfig();
+    setHasConfig(false);
+  }
+
+  async function handlePlaySample() {
+    setPlaying(true);
+    setPlayError("");
+    try {
+      const { audioBase64, mimeType } = await window.aurora.tts.speak("Oi! Essa é a minha voz natural, via Azure Speech.");
+      const audio = new Audio(`data:${mimeType};base64,${audioBase64}`);
+      await audio.play();
+    } catch (err) {
+      setPlayError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPlaying(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        background: C.panel,
+        border: `1px solid ${hasConfig ? C.phosphor : C.line}`,
+        borderRadius: 12,
+        padding: "11px 12px",
+        marginBottom: 10,
+      }}
+    >
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <span className="aur-display" style={{ color: C.bone, fontSize: 14, fontWeight: 600 }}>
+          Azure Speech (voz natural)
+        </span>
+        {hasConfig && (
+          <span
+            className="aur-mono"
+            style={{ fontSize: 9.5, color: C.phosphor, border: `1px solid ${C.phosphor}`, borderRadius: 4, padding: "1px 6px" }}
+          >
+            configurado
+          </span>
+        )}
+      </div>
+
+      {hasConfig && !editing ? (
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="aur-mono" style={{ fontSize: 11, color: C.phosphor }}>
+            voz Francisca (neural pt-BR) ativa
+          </span>
+          <button
+            onClick={handlePlaySample}
+            disabled={playing}
+            className="aur-mono"
+            style={{
+              background: "transparent",
+              color: C.bone,
+              border: `1px solid ${C.line}`,
+              borderRadius: 6,
+              padding: "3px 8px",
+              fontSize: 10.5,
+              cursor: playing ? "default" : "pointer",
+            }}
+          >
+            {playing ? "tocando…" : "ouvir exemplo"}
+          </button>
+          <button
+            onClick={() => setEditing(true)}
+            className="aur-mono"
+            style={{ background: "transparent", color: C.dim, border: "none", fontSize: 10.5, cursor: "pointer", textDecoration: "underline" }}
+          >
+            trocar
+          </button>
+          <button
+            onClick={handleRemove}
+            className="aur-mono"
+            style={{ background: "transparent", color: C.danger, border: "none", fontSize: 10.5, cursor: "pointer", textDecoration: "underline" }}
+          >
+            remover
+          </button>
+          {playError && (
+            <p className="aur-mono" style={{ fontSize: 10, color: C.danger, width: "100%", marginTop: 2 }}>
+              {playError}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div>
+          <div className="flex gap-2 mb-2">
+            <input
+              type="password"
+              value={keyDraft}
+              onChange={(e) => {
+                setKeyDraft(e.target.value);
+                setTestResult(null);
+              }}
+              placeholder="subscription key"
+              style={{
+                flex: 1,
+                background: C.panelUp,
+                color: C.bone,
+                border: `1px solid ${C.line}`,
+                borderRadius: 6,
+                padding: "6px 8px",
+                fontSize: 12.5,
+                minWidth: 0,
+                outline: "none",
+              }}
+            />
+            <input
+              type="text"
+              value={regionDraft}
+              onChange={(e) => {
+                setRegionDraft(e.target.value);
+                setTestResult(null);
+              }}
+              placeholder="region (ex.: brazilsouth)"
+              style={{
+                width: 150,
+                background: C.panelUp,
+                color: C.bone,
+                border: `1px solid ${C.line}`,
+                borderRadius: 6,
+                padding: "6px 8px",
+                fontSize: 12.5,
+                outline: "none",
+              }}
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleTest}
+              disabled={!keyDraft || !regionDraft || testing}
+              className="aur-mono"
+              style={{
+                background: "transparent",
+                color: C.bone,
+                border: `1px solid ${C.line}`,
+                borderRadius: 6,
+                padding: "6px 8px",
+                fontSize: 11,
+                cursor: keyDraft && regionDraft ? "pointer" : "default",
+              }}
+            >
+              {testing ? "testando…" : "testar"}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!keyDraft || !regionDraft || saving}
+              className="aur-display"
+              style={{
+                background: C.copper,
+                color: "#1a120b",
+                fontWeight: 600,
+                border: "none",
+                borderRadius: 6,
+                padding: "6px 10px",
+                fontSize: 11,
+                cursor: keyDraft && regionDraft ? "pointer" : "default",
+              }}
+            >
+              {saving ? "salvando…" : "salvar"}
+            </button>
+          </div>
+          {testResult && (
+            <p className="aur-mono" style={{ fontSize: 10.5, color: testResult.ok ? C.phosphor : C.danger, marginTop: 4 }}>
+              {testResult.message}
+            </p>
+          )}
+          {hasConfig && editing && (
+            <button
+              onClick={() => {
+                setEditing(false);
+                setKeyDraft("");
+                setRegionDraft("");
+                setTestResult(null);
+              }}
+              className="aur-mono"
+              style={{ background: "transparent", color: C.dim, border: "none", fontSize: 10, cursor: "pointer", marginTop: 4, padding: 0 }}
+            >
+              cancelar
+            </button>
+          )}
+        </div>
+      )}
+
+      <p className="aur-mono" style={{ fontSize: 9.5, color: C.dim, marginTop: 6, opacity: 0.85 }}>
+        voz "Francisca" (neural, pt-BR) via Azure AI Speech — tier grátis de 500 mil
+        caracteres/mês. Sem isso configurado, a Aurora usa a voz local do Windows —
+        ver README.md "Voz da Aurora" pra como conseguir a chave.
+      </p>
     </div>
   );
 }

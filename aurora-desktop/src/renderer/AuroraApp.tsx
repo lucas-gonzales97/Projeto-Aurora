@@ -244,14 +244,37 @@ function pickPortugueseVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoi
   );
 }
 
-async function speak(text: string) {
+function speakLocal(text: string) {
   if (!text || !("speechSynthesis" in window)) return;
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = "pt-BR";
-  const voices = cachedVoices.length > 0 ? cachedVoices : await loadVoices();
-  utter.voice = pickPortugueseVoice(voices);
+  utter.voice = pickPortugueseVoice(cachedVoices);
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utter);
+}
+
+// Voz natural em nuvem (Azure AI Speech — ADR-0007-tts-azure-speech.md):
+// a mesma voz "Francisca" que o Narrator do Windows usa, só que acessível
+// por API em vez de exclusiva do Narrator (Narrator não expõe suas vozes
+// naturais a nenhum outro app, nem via SAPI5/speechSynthesis — confirmado,
+// não é limitação deste código). Se não estiver configurada, ou se a
+// chamada falhar (rede, quota, chave inválida), cai pra speechSynthesis
+// local — a Aurora nunca fica muda por causa de um problema de rede.
+async function speak(text: string) {
+  if (!text) return;
+  try {
+    const hasAzure = await window.aurora.tts.hasConfig();
+    if (hasAzure) {
+      const { audioBase64, mimeType } = await window.aurora.tts.speak(text);
+      const audio = new Audio(`data:${mimeType};base64,${audioBase64}`);
+      await audio.play();
+      return;
+    }
+  } catch (err) {
+    console.warn("Azure Speech falhou, caindo pra voz local do Windows:", err);
+  }
+  await loadVoices();
+  speakLocal(text);
 }
 
 /* ---------- Opções numeradas na resposta da Aurora ("1. texto", "2. texto"...) ---------- */
