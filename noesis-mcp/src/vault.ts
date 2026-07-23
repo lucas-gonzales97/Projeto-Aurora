@@ -22,7 +22,7 @@ export const VAULT_ROOT = process.env.NOESIS_VAULT_ROOT
   : path.resolve(__dirname, "..", "..");
 
 // Mirrors scripts/validate_frontmatter.py so "what counts as a note" never drifts between the two.
-const IGNORED_DIRS = new Set([".git", ".obsidian", "node_modules", "scripts", "events"]);
+const IGNORED_DIRS = new Set([".git", ".obsidian", "node_modules", "scripts", "events", "research"]);
 const IGNORED_FILES = new Set(["SETUP.md", "README.md", "CLAUDE.md", "00-INDEX.md"]);
 
 export class VaultPathError extends Error {}

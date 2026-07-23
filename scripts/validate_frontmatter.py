@@ -36,7 +36,7 @@ RULES = {
     "meta":       ([], {}),
 }
 
-IGNORED_DIRS = {".git", ".obsidian", "node_modules", "scripts", "events"}
+IGNORED_DIRS = {".git", ".obsidian", "node_modules", "scripts", "events", "research"}
 IGNORED_FILES = {"SETUP.md", "README.md", "CLAUDE.md", "00-INDEX.md"}
 
 def parse_frontmatter(text):
