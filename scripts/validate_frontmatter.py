@@ -36,7 +36,8 @@ RULES = {
     "meta":       ([], {}),
 }
 
-IGNORED_DIRS = {".git", ".obsidian", "node_modules", "scripts", "events", "research"}
+IGNORED_DIRS = {".git", ".obsidian", "node_modules", "scripts", "events", "research",
+                "noesis-mcp", "aurora-desktop"}  # dirs de código/artefato não são notas do vault
 IGNORED_FILES = {"SETUP.md", "README.md", "CLAUDE.md", "00-INDEX.md"}
 
 def parse_frontmatter(text):
