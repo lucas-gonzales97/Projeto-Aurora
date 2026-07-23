@@ -20,6 +20,7 @@ import {
 } from "./providers/keyStore.js";
 import { synthesizeSpeech, validateAzureSpeechConfig } from "./tts/azureSpeech.js";
 import { ChatStore } from "./chatStore.js";
+import { buildGraphSnapshot } from "./graphSnapshot.js";
 import dynamicImport from "./esmImport.js";
 
 // Vault root e local do noesis-mcp — dois cenários bem diferentes (ver
@@ -260,8 +261,30 @@ ipcMain.handle("window:toggle-always-on-top", (event) => {
 });
 
 // --- IPC: noesis-mcp ---
-ipcMain.handle("mcp:get-context", async (_event, intent: string) => {
-  return callMcpTool("get_context", { intent });
+ipcMain.handle("mcp:get-context", async (event, intent: string) => {
+  const ctx = await callMcpTool("get_context", { intent });
+  // Visualização (ADR-0012): todo retrieval "acende" os nós recuperados na
+  // aba Grafo — o evento vai pra janela que pediu, com ids e scores.
+  const ids = (ctx?.entities ?? []).map((e: any) => e.id).filter(Boolean);
+  if (ids.length) {
+    event.sender.send("graph:activated", {
+      ids,
+      scores: Object.fromEntries((ctx.entities as any[]).filter((e) => e.id).map((e) => [e.id, e.relevance ?? 0])),
+    });
+  }
+  return ctx;
+});
+
+ipcMain.handle("mcp:read-note", async (_event, payload: { id?: string; path?: string }) => {
+  return callMcpTool("read_note", payload);
+});
+
+// --- IPC: grafo (ADR-0012) ---
+ipcMain.handle("graph:get-snapshot", async () => {
+  const res = await callMcpTool("list_notes", { limit: 200 });
+  const snapshot = buildGraphSnapshot(res?.results ?? []);
+  for (const w of snapshot.warnings) console.warn("grafo:", w);
+  return snapshot;
 });
 
 ipcMain.handle("mcp:list-notes", async (_event, payload: { type?: string; status?: string; dir?: string; limit?: number }) => {

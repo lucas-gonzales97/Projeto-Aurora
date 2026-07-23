@@ -21,6 +21,12 @@ export interface ListNotesInput {
   limit?: number;
 }
 
+export interface ListNoteRelation {
+  target: string;
+  kind: string;
+  weight?: number;
+}
+
 export interface ListNotesEntry {
   id: string | null;
   path: string;
@@ -28,6 +34,8 @@ export interface ListNotesEntry {
   status: string | null;
   title: string | null;
   frontmatter: Record<string, any>;
+  /** relações do frontmatter (target/kind/weight) — insumo do grafo (ADR-0012) */
+  relations: ListNoteRelation[];
 }
 
 export function listNotes(input: ListNotesInput) {
@@ -46,7 +54,12 @@ export function listNotes(input: ListNotesInput) {
     if (input.status && note.data?.status !== input.status) continue;
     if (dirPrefix && !note.relPath.startsWith(dirPrefix)) continue;
 
-    const { relations: _omit, ...frontmatter } = note.data ?? {};
+    const { relations: rawRelations, ...frontmatter } = note.data ?? {};
+    const relations: ListNoteRelation[] = Array.isArray(rawRelations)
+      ? rawRelations
+          .filter((r: any) => r && typeof r.target === "string" && typeof r.kind === "string")
+          .map((r: any) => ({ target: r.target, kind: r.kind, ...(typeof r.weight === "number" ? { weight: r.weight } : {}) }))
+      : [];
     entries.push({
       id: note.data?.id ?? null,
       path: note.relPath,
@@ -54,6 +67,7 @@ export function listNotes(input: ListNotesInput) {
       status: note.data?.status ?? null,
       title: extractTitle(note.body),
       frontmatter,
+      relations,
     });
   }
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Settings from "./Settings";
+import GraphView from "./GraphView";
 import { buildChatSystemPrompt, buildOnboardingSystemPrompt } from "./prompt";
 
 /* ============================================================
@@ -1147,7 +1148,7 @@ const TTS_STORAGE_KEY = "aurora:tts-enabled";
 
 export default function AuroraApp() {
   const [phase, setPhase] = useState<"loading" | "onboarding" | "app">("loading");
-  const [tab, setTab] = useState<"chat" | "painel" | "auto" | "settings">("chat");
+  const [tab, setTab] = useState<"chat" | "painel" | "grafo" | "auto" | "settings">("chat");
   const [ttsEnabled, setTtsEnabled] = useState(() => {
     const saved = localStorage.getItem(TTS_STORAGE_KEY);
     return saved === null ? true : saved === "1";
@@ -1175,9 +1176,10 @@ export default function AuroraApp() {
 
   const chat = useAuroraChat(handleAssistantReply);
 
-  const tabs: { id: "chat" | "painel" | "auto" | "settings"; label: string }[] = [
+  const tabs: { id: "chat" | "painel" | "grafo" | "auto" | "settings"; label: string }[] = [
     { id: "chat", label: "Conversa" },
     { id: "painel", label: "Painel" },
+    { id: "grafo", label: "Grafo" },
     { id: "auto", label: "Automações" },
     { id: "settings", label: "Config" },
   ];
@@ -1231,6 +1233,10 @@ export default function AuroraApp() {
               <Chat chat={chat} tab={tab} />
             </div>
             {tab === "painel" && <Painel />}
+            {/* Grafo montado só quando visível (physics do vis-network não
+                precisa rodar em background), mas o graph:activated do chat
+                continua chegando: ao reabrir a aba o snapshot é recarregado. */}
+            {tab === "grafo" && <GraphView />}
             {tab === "auto" && <Automacoes />}
             {tab === "settings" && <Settings />}
           </>

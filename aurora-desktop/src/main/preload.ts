@@ -23,9 +23,14 @@ contextBridge.exposeInMainWorld("aurora", {
     getContext: (intent: string) => ipcRenderer.invoke("mcp:get-context", intent),
     listNotes: (payload: { type?: string; status?: string; dir?: string; limit?: number }) =>
       ipcRenderer.invoke("mcp:list-notes", payload),
+    readNote: (payload: { id?: string; path?: string }) => ipcRenderer.invoke("mcp:read-note", payload),
     logEvent: (payload: unknown) => ipcRenderer.invoke("mcp:log-event", payload),
     createNote: (payload: unknown) => ipcRenderer.invoke("mcp:create-note", payload),
     createRelation: (payload: unknown) => ipcRenderer.invoke("mcp:create-relation", payload),
+  },
+  graph: {
+    getSnapshot: () => ipcRenderer.invoke("graph:get-snapshot"),
+    onActivated: (cb: (data: { ids: string[]; scores: Record<string, number> }) => void) => on("graph:activated", cb),
   },
   window: {
     close: () => ipcRenderer.send("window:close"),

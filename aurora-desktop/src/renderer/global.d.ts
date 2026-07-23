@@ -58,6 +58,11 @@ interface AuroraBridge {
         frontmatter: Record<string, any>;
       }[];
     }>;
+    readNote: (payload: { id?: string; path?: string }) => Promise<{
+      path: string;
+      frontmatter: Record<string, any>;
+      body: string;
+    }>;
     logEvent: (payload: { type: string; summary: string; entities?: string[]; data?: Record<string, unknown> }) => Promise<unknown>;
     createNote: (payload: {
       type: string;
@@ -77,6 +82,14 @@ interface AuroraBridge {
       reason?: string;
       evidence?: string[];
     }) => Promise<unknown>;
+  };
+  graph: {
+    getSnapshot: () => Promise<{
+      nodes: { id: string; label: string; type: string; status: string | null; path: string }[];
+      edges: { from: string; to: string; kind: string; weight: number }[];
+      warnings: string[];
+    }>;
+    onActivated: (cb: (data: { ids: string[]; scores: Record<string, number> }) => void) => () => void;
   };
   window: {
     close: () => void;
