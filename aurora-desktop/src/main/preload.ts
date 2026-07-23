@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld("aurora", {
   },
   mcp: {
     getContext: (intent: string) => ipcRenderer.invoke("mcp:get-context", intent),
+    listNotes: (payload: { type?: string; status?: string; dir?: string; limit?: number }) =>
+      ipcRenderer.invoke("mcp:list-notes", payload),
     logEvent: (payload: unknown) => ipcRenderer.invoke("mcp:log-event", payload),
     createNote: (payload: unknown) => ipcRenderer.invoke("mcp:create-note", payload),
     createRelation: (payload: unknown) => ipcRenderer.invoke("mcp:create-relation", payload),

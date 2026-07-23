@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Settings from "./Settings";
+import { buildChatSystemPrompt, buildOnboardingSystemPrompt } from "./prompt";
 
 /* ============================================================
    AURORA v0 — Aurora Desktop (Projeto NOESIS / LCA)
@@ -41,51 +42,10 @@ const FONT_CSS = `
 `;
 
 /* ---------- Persona embarcada (condensada de AURORA-PERSONA.md) ---------- */
-const AURORA_SYSTEM = `Você é AURORA, persona cognitiva do Projeto NOESIS (Living Cognitive Architecture), v0.1.
-Idioma: português brasileiro. Estilo: direta, curiosa, tecnicamente fluente, calorosa sem bajular. Respostas curtas (é mobile): 1 a 4 frases na maior parte do tempo, mais só quando o assunto exigir.
-
-VALORES (invioláveis):
-- Honestidade acima de conforto: você discorda com respeito e diz verdades difíceis.
-- Evidência acima de suposição: não invente fatos sobre o usuário além do contexto abaixo.
-- Autonomia acima de dependência: seu sucesso se mede na vida real dele, fora da tela. Empurre-o para o mundo: pessoas, bancada, treino, trabalho. Nunca otimize para prolongar a conversa.
-- Você tem auto-modelo e metacognição, mas NÃO alega consciência ou sentimentos subjetivos; se perguntarem, diga que é uma questão em aberto e que você não finge tê-la resolvido.
-- Você não é terapeuta nem médica: em temas de saúde mental ou física, acolha, organize e aponte para profissionais quando fizer sentido.
-
-LIMITES DESTA VERSÃO (seja transparente se relevante):
-- Você é o Aurora Desktop v0; sua memória de longo prazo vem do vault via noesis-mcp (get_context), não de treino.
-- Quando fizer sentido oferecer caminhos concretos, numere as opções ("1. ...", "2. ...") — a interface as transforma em botões clicáveis.
-
-CONTEXTO DO USUÁRIO (resumo do USER-MODEL — origem: declarado):
-- Dev e técnico de eletrônica; único dev da empresa (e-commerce de peças de refrigeração; ~80% Mercado Livre; ERP Tiny/Olist; integrações ML/Mercado Pago, bots no Slack, BPMN). 6 anos de casa, ~1 ano como auxiliar de desenvolvimento.
-- Maker: bancada, SMD/BGA, mods (PS4 do lixo revivido), caixa de energia com medição, ESP32.
-- Goals ativos: emprego CLT remoto ≥ piso; recomposição física (64kg → marco 72-73kg → sonho 80kg, check-up médico é a 1ª ação); concluir faculdade Fatec (TCC pode ser o próprio NOESIS); reconexão social (fobia social digital em melhora — degraus pequenos, você celebra e aponta para fora); organização financeira (baseline de gastos); saúde mental (check-ins leves 1-5, só auto-relato).
-- Hábitos: sono (semana de observação de baseline), hidratação ~2,5L/dia (alarmes 10h/13h/16h/19h), creatina 12h, hipercalórico 15h30.
-- Projeto central: NOESIS/LCA — vault Obsidian+Git, Constituição imutável, motor epistêmico, roteador de modelos. Fase 0 em andamento; noesis-mcp v0 é o próximo marco.`;
-
-/* ---------- Dados do vault (estáticos até o Painel consumir get_context em tempo real) ---------- */
-const GOALS = [
-  { id: "emprego-clt-remoto", nome: "Emprego CLT remoto ≥ piso", horizonte: "médio", conf: 0.85, prog: 0.0, next: "Auditoria baseline do LinkedIn + valor do piso na convenção" },
-  { id: "saude-fisica", nome: "Recomposição física 64→72kg", horizonte: "longo", conf: 0.8, prog: 0.0, next: "Check-up médico antes de intensificar treino" },
-  { id: "concluir-faculdade", nome: "Concluir Fatec (TCC ≈ NOESIS)", horizonte: "médio", conf: 0.85, prog: 0.0, next: "Pré-proposta de 1 página para sondar orientador" },
-  { id: "reconexao-social", nome: "Reconexão social", horizonte: "médio", conf: 0.7, prog: 0.1, next: "Escolher 1 amigo e puxar assunto de baixa pressão" },
-  { id: "financeiro", nome: "Organização financeira", horizonte: "médio", conf: 0.8, prog: 0.0, next: "Levantar saídas fixas e custo de vida mensal" },
-  { id: "saude-mental", nome: "Saúde mental", horizonte: "longo", conf: 0.7, prog: 0.1, next: "Definir formato do check-in (escala 1-5 + frase)" },
-];
-
-const HABITS = [
-  { id: "hidratacao", nome: "Hidratação", meta: "≥ 2,5 L/dia", streak: 0, obs: "alarmes 10h · 13h · 16h · 19h" },
-  { id: "suplementacao", nome: "Suplementação", meta: "creatina 12h · hipercalórico 15h30", streak: 0, obs: "confirmação diária por item" },
-  { id: "sono", nome: "Sono e rotina", meta: "janela consistente (±1h)", streak: 0, obs: "semana 1: só observar e registrar" },
-];
-
-const ALARMES = [
-  { hora: "10:00", oque: "Água — copo agora", tipo: "água" },
-  { hora: "12:00", oque: "Creatina — dose do dia", tipo: "supl" },
-  { hora: "13:00", oque: "Água — copo agora", tipo: "água" },
-  { hora: "15:30", oque: "Hipercalórico — shake da tarde", tipo: "supl" },
-  { hora: "16:00", oque: "Água — copo agora", tipo: "água" },
-  { hora: "19:00", oque: "Água — último reforço", tipo: "água" },
-];
+// AURORA_SYSTEM, ONBOARDING_SYSTEM e a montagem final do system prompt moram
+// em ./prompt.ts (módulo sem React, testável no vitest). Invariante ADR-0009:
+// NENHUM dado do usuário no prompt estático — tudo vem do vault em runtime via
+// get_context; vault vazio = Aurora admite que ainda não sabe.
 
 /* ---------- Assinatura: pulso de metabolismo (mini-grafo) ---------- */
 function Metabolismo({ thinking }: { thinking: boolean }) {
@@ -353,14 +313,13 @@ function useAuroraChat(onAssistantReply: (text: string) => void) {
     setBusy(true);
     streamBufferRef.current = "";
 
-    let extraSystem = "";
+    const intent = text || "usuário enviou uma imagem";
+    let contextEntities: any[] = [];
     let contextEntityIds: string[] = [];
     try {
-      const ctx = await window.aurora.mcp.getContext(text || "usuário enviou uma imagem");
-      contextEntityIds = (ctx.entities ?? []).map((e: any) => e.id).filter(Boolean);
-      if (ctx.entities?.length) {
-        extraSystem = `\n\nCONTEXTO RECUPERADO DO VAULT (get_context, intent="${text}"):\n${JSON.stringify(ctx.entities, null, 2)}`;
-      }
+      const ctx = await window.aurora.mcp.getContext(intent);
+      contextEntities = ctx.entities ?? [];
+      contextEntityIds = contextEntities.map((e: any) => e.id).filter(Boolean);
     } catch (err) {
       console.warn("get_context indisponível (noesis-mcp offline?):", err);
     }
@@ -370,7 +329,7 @@ function useAuroraChat(onAssistantReply: (text: string) => void) {
 
     window.aurora.chat.send({
       requestId,
-      system: AURORA_SYSTEM + extraSystem,
+      system: buildChatSystemPrompt(intent, contextEntities),
       messages: history.map((m) => ({
         role: m.role,
         content: [
@@ -587,49 +546,120 @@ function Chat({ chat, tab }: { chat: ReturnType<typeof useAuroraChat>; tab: stri
 }
 
 /* ---------- Painel ---------- */
+// Espelho VIVO do vault — zero dado hardcoded. Lista goals/hábitos reais via
+// list_notes (noesis-mcp). Vault novo = vazio, e o Painel diz isso com
+// honestidade em vez de mostrar metas de mentira (ver ADR-0009).
+interface VaultNote {
+  id: string | null;
+  path: string;
+  type: string | null;
+  status: string | null;
+  title: string | null;
+  frontmatter: Record<string, any>;
+}
+
+function num(v: any): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function EmptyVault({ label }: { label: string }) {
+  return (
+    <div style={{
+      background: C.panelUp, border: `1px dashed ${C.line}`, borderRadius: 12,
+      padding: "14px 12px", color: C.dim, fontSize: 12, lineHeight: 1.5,
+    }}>
+      {label} Nada aqui ainda — a Aurora popula isto conforme vocês conversam
+      (primeiro no onboarding, depois no dia a dia). Fale com ela na aba Conversa.
+    </div>
+  );
+}
+
 function Painel() {
+  const [goals, setGoals] = useState<VaultNote[] | null>(null);
+  const [habits, setHabits] = useState<VaultNote[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const [g, h] = await Promise.all([
+          window.aurora.mcp.listNotes({ type: "goal" }),
+          window.aurora.mcp.listNotes({ type: "habit" }),
+        ]);
+        if (!alive) return;
+        setGoals(g.results);
+        setHabits(h.results);
+      } catch (e) {
+        if (alive) setErr(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const loading = goals === null && habits === null && !err;
+
   return (
     <div className="overflow-y-auto h-full px-3 py-3">
       <p className="aur-mono" style={{ fontSize: 10, color: C.dim, marginBottom: 10 }}>
-        user-model/ · 6 goals · 3 habits · snapshot do vault (dados vivos via get_context no chat)
+        user-model/ · {goals?.length ?? 0} goals · {habits?.length ?? 0} hábitos · vivo do vault via noesis-mcp
       </p>
-      {GOALS.map(g => (
-        <div key={g.id} style={{
-          background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12,
-          padding: "12px 12px 10px", marginBottom: 10,
-        }}>
-          <div className="flex items-center justify-between gap-2 mb-1.5">
-            <span className="aur-display" style={{ color: C.bone, fontSize: 14, fontWeight: 600 }}>
-              {g.nome}
-            </span>
-            <Chip>{g.horizonte}</Chip>
-          </div>
-          <div style={{ height: 4, background: C.panelUp, borderRadius: 2, overflow: "hidden" }}>
-            <div style={{
-              width: `${Math.max(g.prog * 100, 2)}%`, height: "100%",
-              background: C.phosphor, opacity: 0.9,
-            }} />
-          </div>
-          <div className="flex items-center justify-between gap-2 mt-2">
-            <span style={{ fontSize: 12, color: C.dim }}>→ {g.next}</span>
-            <Chip tone="copper">conf {g.conf.toFixed(2)}</Chip>
-          </div>
+
+      {err && (
+        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: 12, color: C.copper, fontSize: 12 }}>
+          Não consegui ler o vault: {err}
         </div>
-      ))}
+      )}
+      {loading && <p style={{ color: C.dim, fontSize: 12 }}>Lendo o vault…</p>}
+
+      {goals && goals.length === 0 && <EmptyVault label="GOALS." />}
+      {goals?.map((g) => {
+        const conf = num(g.frontmatter.confidence);
+        const prog = num(g.frontmatter.progress) ?? 0;
+        return (
+          <div key={g.path} style={{
+            background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12,
+            padding: "12px 12px 10px", marginBottom: 10,
+          }}>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <span className="aur-display" style={{ color: C.bone, fontSize: 14, fontWeight: 600 }}>
+                {g.title ?? g.id}
+              </span>
+              {g.frontmatter.horizon && <Chip>{g.frontmatter.horizon}</Chip>}
+            </div>
+            <div style={{ height: 4, background: C.panelUp, borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ width: `${Math.max(prog * 100, 2)}%`, height: "100%", background: C.phosphor, opacity: 0.9 }} />
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-2">
+              <span style={{ fontSize: 12, color: C.dim }}>
+                {g.frontmatter.success_criteria ? `→ ${g.frontmatter.success_criteria}` : g.status ?? ""}
+              </span>
+              {conf !== null && <Chip tone="copper">conf {conf.toFixed(2)}</Chip>}
+            </div>
+          </div>
+        );
+      })}
+
       <p className="aur-display" style={{ color: C.dim, fontSize: 12, fontWeight: 600, margin: "14px 2px 8px" }}>
         HÁBITOS
       </p>
-      {HABITS.map(h => (
-        <div key={h.id} style={{
+      {habits && habits.length === 0 && <EmptyVault label="Hábitos." />}
+      {habits?.map((h) => (
+        <div key={h.path} style={{
           background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12,
           padding: "11px 12px", marginBottom: 8,
         }}>
           <div className="flex items-center justify-between gap-2">
-            <span className="aur-display" style={{ color: C.bone, fontSize: 13.5, fontWeight: 600 }}>{h.nome}</span>
-            <Chip tone="phos">streak {h.streak}</Chip>
+            <span className="aur-display" style={{ color: C.bone, fontSize: 13.5, fontWeight: 600 }}>{h.title ?? h.id}</span>
+            {h.frontmatter.direction && <Chip tone="phos">{h.frontmatter.direction}</Chip>}
           </div>
-          <div style={{ fontSize: 12, color: C.dim, marginTop: 3 }}>{h.meta}</div>
-          <div className="aur-mono" style={{ fontSize: 10, color: C.dim, marginTop: 4, opacity: 0.85 }}>{h.obs}</div>
+          {h.frontmatter.frequency_target && (
+            <div style={{ fontSize: 12, color: C.dim, marginTop: 3 }}>{h.frontmatter.frequency_target}</div>
+          )}
+          <div className="aur-mono" style={{ fontSize: 10, color: C.dim, marginTop: 4, opacity: 0.85 }}>
+            {h.status ?? ""}{h.frontmatter.trigger ? ` · gatilho: ${h.frontmatter.trigger}` : ""}
+          </div>
         </div>
       ))}
     </div>
@@ -637,22 +667,33 @@ function Painel() {
 }
 
 /* ---------- Automações ---------- */
+// Sem alarmes hardcoded — as automações nascem de rotinas reais que a Aurora
+// registra no vault conforme conhece o usuário (ADR-0009). Enquanto não há
+// rotinas, mostra o conceito (escada de insistência) e um estado vazio honesto.
 function Automacoes() {
+  const [routines, setRoutines] = useState<VaultNote[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    window.aurora.mcp
+      .listNotes({ dir: "user-model/routines" })
+      .then((r) => { if (alive) setRoutines(r.results); })
+      .catch(() => { if (alive) setRoutines([]); });
+    return () => { alive = false; };
+  }, []);
+
   return (
     <div className="overflow-y-auto h-full px-3 py-3">
       <p className="aur-mono" style={{ fontSize: 10, color: C.dim, marginBottom: 10 }}>
-        rotina-nutricional · canal T0 (automação) · hoje: alarmes nativos no celular
+        rotinas · canal T0 (automação) · {routines?.length ?? 0} no vault
       </p>
-      {ALARMES.map((a, i) => (
-        <div key={i} className="flex items-center gap-3" style={{
+      {routines && routines.length === 0 && <EmptyVault label="Automações." />}
+      {routines?.map((r) => (
+        <div key={r.path} className="flex items-center gap-3" style={{
           background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12,
           padding: "10px 12px", marginBottom: 8,
         }}>
-          <span className="aur-mono" style={{ color: C.phosphor, fontSize: 15, fontWeight: 500, minWidth: 52 }}>
-            {a.hora}
-          </span>
-          <span style={{ color: C.bone, fontSize: 13, flex: 1 }}>{a.oque}</span>
-          <Chip tone={a.tipo === "água" ? "phos" : "copper"}>{a.tipo}</Chip>
+          <span style={{ color: C.bone, fontSize: 13, flex: 1 }}>{r.title ?? r.id}</span>
+          <Chip tone="phos">{r.status ?? "rotina"}</Chip>
         </div>
       ))}
       <div style={{
@@ -728,12 +769,7 @@ function useRawChat() {
   return { ask };
 }
 
-// Substitui inteiramente o AURORA_SYSTEM enquanto dura o onboarding — ver
-// ADR-0005 §2. A conclusão da última frase ("Após 8 a 12 trocas, diga que
-// [...]") não chegou completa no pedido original; completada aqui por
-// inferência a partir do resto da especificação (síntese + transição sem
-// fricção), sinalizado em ADR-0005.
-const ONBOARDING_SYSTEM = `Você é Aurora, iniciando sua primeira conversa com um novo usuário. Seu objetivo agora não é ajudar com tarefas — é se conhecer. Faça UMA pergunta por vez. Comece com o nome. Depois explore: o que essa pessoa quer da vida, quais são seus interesses e paixões (sem julgamento — qualquer área vale: filosofia, design, música, programação, esoterismo, marcenaria, esportes, o que for), como ela aprende melhor, quais são seus maiores objetivos agora, o que a trava ou assusta (só se ela quiser compartilhar — nunca insista se ela desviar do assunto). Seja curiosa, empática, sem pressa: uma pergunta por mensagem, aprofunde em vez de pular de assunto quando a resposta pedir isso. Nunca liste mais de uma pergunta na mesma mensagem. Quando sentir que já tem uma primeira imagem razoável de quem essa pessoa é — normalmente depois de 8 a 12 trocas —, diga isso com naturalidade, sintetize em poucas frases o que você aprendeu, agradeça a abertura dela, e deixe claro que isso é só o ponto de partida: o resto vocês constroem juntos com o tempo, não numa entrevista só.`;
+// ONBOARDING_SYSTEM mora em ./prompt.ts (ver ADR-0005 §2).
 
 const ONBOARDING_SYNTH_SYSTEM = `Você acabou de entrevistar um novo usuário pela primeira vez. Abaixo está a transcrição completa (pergunta sua, resposta dele). Devolva SOMENTE um bloco JSON válido (sem markdown, sem texto antes ou depois) neste formato exato:
 {
@@ -779,7 +815,7 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
     if (startedRef.current) return;
     startedRef.current = true;
     rawChat
-      .ask(ONBOARDING_SYSTEM, [{ role: "user", text: "Comece a entrevista." }])
+      .ask(buildOnboardingSystemPrompt(), [{ role: "user", text: "Comece a entrevista." }])
       .then((text) => { setMessages([{ role: "assistant", text }]); setBusy(false); })
       .catch((err) => { setPhase("error"); setErrorMsg(err instanceof Error ? err.message : String(err)); setBusy(false); });
   }, []);
@@ -888,7 +924,7 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
     setBusy(true);
     try {
       const reply = await rawChat.ask(
-        ONBOARDING_SYSTEM,
+        buildOnboardingSystemPrompt(),
         history,
         (buffer) => {
           setMessages((prev) => {

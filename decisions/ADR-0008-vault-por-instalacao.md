@@ -177,12 +177,17 @@ no-op em dev (raiz já tem `ontology/`). Verificado: com o seed,
 (`goal-emprego-clt-remoto`, relevância 25, pra intent "emprego e trabalho")
 — loop de memória fecha ponta a ponta no bundle instalado.
 
-**Pendente (decisão de produto):** o bloco `CONTEXTO DO USUÁRIO` hardcoded
+**Pendente (decisão de produto):** ~~o bloco `CONTEXTO DO USUÁRIO` hardcoded
 em `AuroraApp.tsx` (goals reais do Lucas no `AURORA_SYSTEM`) faz a Aurora
 "lembrar" de coisas com vault vazio — confabulação, provada na conversa de
 validação. Fresh install de outra pessoa herdaria os goals do Lucas. Some
 do prompt (fonte única = vault via `get_context`, já cabeado em
-`AuroraApp.tsx:359`) numa próxima iteração.
+`AuroraApp.tsx:359`) numa próxima iteração.~~
+**RESOLVIDO em 2026-07-23** (ver ADR-0009-aurora-crua.md): bloco hardcoded
+removido do prompt E da UI (Painel/Automações agora leem o vault via
+`list_notes`); guarda de regressão em `src/renderer/prompt.test.ts` impede o
+retorno de qualquer dado pessoal ao prompt estático; validado com vault
+populado (retrieval real) e vault vazio (zero contexto anexado).
 
 ## Alternativas rejeitadas
 

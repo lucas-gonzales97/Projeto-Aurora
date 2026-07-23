@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 
 import { readNoteSchema, readNote } from "./tools/readNote.js";
 import { searchNotesSchema, searchNotes } from "./tools/searchNotes.js";
+import { listNotesSchema, listNotes } from "./tools/listNotes.js";
 import { createNoteSchema, createNote } from "./tools/createNote.js";
 import { createRelationSchema, createRelation } from "./tools/createRelation.js";
 import { logEventSchema, logEvent } from "./tools/logEvent.js";
@@ -43,6 +44,19 @@ server.tool(
   async (input) => {
     try {
       return asToolResult(searchNotes(input));
+    } catch (err) {
+      return asErrorResult(err);
+    }
+  }
+);
+
+server.tool(
+  "list_notes",
+  "Lista notas do vault por type/status/dir, sem pontuação de relevância (para dashboards: 'todos os meus goals', 'todos os hábitos ativos'). Ordena por created desc.",
+  listNotesSchema,
+  async (input) => {
+    try {
+      return asToolResult(listNotes(input));
     } catch (err) {
       return asErrorResult(err);
     }

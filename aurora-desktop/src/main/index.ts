@@ -263,6 +263,10 @@ ipcMain.handle("mcp:get-context", async (_event, intent: string) => {
   return callMcpTool("get_context", { intent });
 });
 
+ipcMain.handle("mcp:list-notes", async (_event, payload: { type?: string; status?: string; dir?: string; limit?: number }) => {
+  return callMcpTool("list_notes", payload ?? {});
+});
+
 ipcMain.handle("mcp:log-event", async (_event, payload: { type: string; summary: string; entities?: string[]; data?: Record<string, unknown> }) => {
   return callMcpTool("log_event", payload);
 });

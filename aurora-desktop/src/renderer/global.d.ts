@@ -22,6 +22,17 @@ interface AuroraBridge {
   };
   mcp: {
     getContext: (intent: string) => Promise<{ intent: string; entities: any[] }>;
+    listNotes: (payload: { type?: string; status?: string; dir?: string; limit?: number }) => Promise<{
+      count: number;
+      results: {
+        id: string | null;
+        path: string;
+        type: string | null;
+        status: string | null;
+        title: string | null;
+        frontmatter: Record<string, any>;
+      }[];
+    }>;
     logEvent: (payload: { type: string; summary: string; entities?: string[]; data?: Record<string, unknown> }) => Promise<unknown>;
     createNote: (payload: {
       type: string;
