@@ -26,7 +26,8 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "electron-store": "^11.0.2",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "sqlite3": "^6.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
@@ -58,10 +59,22 @@
       "dist/**/*"
     ],
     "extraResources": [
-      { "from": "../noesis-mcp/dist", "to": "noesis-mcp/dist" },
-      { "from": "../noesis-mcp/node_modules", "to": "noesis-mcp/node_modules" },
-      { "from": "../noesis-mcp/package.json", "to": "noesis-mcp/package.json" },
-      { "from": "../ontology", "to": "vault-seed/ontology" }
+      {
+        "from": "../noesis-mcp/dist",
+        "to": "noesis-mcp/dist"
+      },
+      {
+        "from": "../noesis-mcp/node_modules",
+        "to": "noesis-mcp/node_modules"
+      },
+      {
+        "from": "../noesis-mcp/package.json",
+        "to": "noesis-mcp/package.json"
+      },
+      {
+        "from": "../ontology",
+        "to": "vault-seed/ontology"
+      }
     ],
     "win": {
       "icon": "build/icon.ico",

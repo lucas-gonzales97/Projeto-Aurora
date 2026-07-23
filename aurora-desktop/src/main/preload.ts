@@ -12,6 +12,12 @@ contextBridge.exposeInMainWorld("aurora", {
     onChunk: (cb: (data: { requestId: string; delta: string }) => void) => on("chat:chunk", cb),
     onDone: (cb: (data: { requestId: string; text: string }) => void) => on("chat:done", cb),
     onError: (cb: (data: { requestId: string; message: string }) => void) => on("chat:error", cb),
+    // Persistência (ADR-0011)
+    newSession: (sessionId: string) => ipcRenderer.invoke("chat:new-session", sessionId),
+    append: (payload: { sessionId: string; role: "user" | "assistant"; content: string; modelUsed?: string | null; providerUsed?: string | null }) =>
+      ipcRenderer.invoke("chat:append", payload),
+    listSessions: () => ipcRenderer.invoke("chat:list-sessions"),
+    loadSession: (sessionId: string) => ipcRenderer.invoke("chat:load-session", sessionId),
   },
   mcp: {
     getContext: (intent: string) => ipcRenderer.invoke("mcp:get-context", intent),

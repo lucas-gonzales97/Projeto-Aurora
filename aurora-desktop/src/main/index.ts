@@ -19,6 +19,7 @@ import {
   hasTtsConfig,
 } from "./providers/keyStore.js";
 import { synthesizeSpeech, validateAzureSpeechConfig } from "./tts/azureSpeech.js";
+import { ChatStore } from "./chatStore.js";
 import dynamicImport from "./esmImport.js";
 
 // Vault root e local do noesis-mcp — dois cenários bem diferentes (ver
@@ -297,15 +298,51 @@ ipcMain.handle("aurora:is-first-run", async () => {
   return !hasAnyUserModelNotes();
 });
 
+// --- Persistência de chat (ADR-0011): memória episódica crua, local ---
+// chat.db mora em userData (perfil do usuário do SO) tanto em dev quanto
+// empacotado — NUNCA dentro do repo nem do instalador (privacidade: cada
+// instalação tem seu próprio histórico, como o vault do ADR-0008).
+const CHAT_DB_PATH = path.join(app.getPath("userData"), "chat.db");
+let chatStore: ChatStore | null = null;
+function getChatStore(): ChatStore {
+  if (!chatStore) chatStore = new ChatStore(CHAT_DB_PATH);
+  return chatStore;
+}
+
+ipcMain.handle("chat:new-session", async (_event, sessionId: string) => {
+  await getChatStore().newSession(sessionId);
+});
+
+ipcMain.handle("chat:append", async (_event, payload: {
+  sessionId: string;
+  role: "user" | "assistant";
+  content: string;
+  modelUsed?: string | null;
+  providerUsed?: string | null;
+}) => {
+  return getChatStore().appendMessage(payload);
+});
+
+ipcMain.handle("chat:list-sessions", async () => {
+  return getChatStore().listSessions();
+});
+
+ipcMain.handle("chat:load-session", async (_event, sessionId: string) => {
+  return getChatStore().loadSession(sessionId);
+});
+
 // --- IPC: chat (streaming, multi-provedor — ADR-0006) ---
 interface ChatSendPayload {
   requestId: string;
   system: string;
   messages: ChatMessage[];
+  /** sessão de persistência (ADR-0011) — quando presente, a resposta do
+   *  assistente é gravada AQUI no main, com model/provider autoritativos. */
+  sessionId?: string;
 }
 
 ipcMain.on("chat:send", async (event, payload: ChatSendPayload) => {
-  const { requestId, system, messages } = payload;
+  const { requestId, system, messages, sessionId } = payload;
   const sender = event.sender;
 
   const providerId = await getActiveProvider();
@@ -356,6 +393,11 @@ ipcMain.on("chat:send", async (event, payload: ChatSendPayload) => {
     });
 
     sender.send("chat:done", { requestId, text: result.text });
+    if (sessionId) {
+      getChatStore()
+        .appendMessage({ sessionId, role: "assistant", content: result.text, modelUsed: model, providerUsed: providerId })
+        .catch((err) => console.warn("chat.db: falha ao persistir resposta:", err));
+    }
     logModelRouterTelemetry({
       providerId,
       model,

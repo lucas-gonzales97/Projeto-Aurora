@@ -11,6 +11,27 @@ interface ChatSendPayload {
   requestId: string;
   system: string;
   messages: { role: "user" | "assistant"; content: ChatContentBlock[] }[];
+  sessionId?: string;
+}
+
+interface ChatSessionSummary {
+  id: string;
+  started_at: string;
+  ended_at: string | null;
+  summary: string | null;
+  message_count: number;
+  preview: string | null;
+}
+
+interface ChatMessageRow {
+  id: string;
+  session_id: string;
+  role: "user" | "assistant";
+  content: string;
+  ts: string;
+  model_used: string | null;
+  provider_used: string | null;
+  domain_classified: string | null;
 }
 
 interface AuroraBridge {
@@ -19,6 +40,10 @@ interface AuroraBridge {
     onChunk: (cb: (data: { requestId: string; delta: string }) => void) => () => void;
     onDone: (cb: (data: { requestId: string; text: string }) => void) => () => void;
     onError: (cb: (data: { requestId: string; message: string }) => void) => () => void;
+    newSession: (sessionId: string) => Promise<void>;
+    append: (payload: { sessionId: string; role: "user" | "assistant"; content: string; modelUsed?: string | null; providerUsed?: string | null }) => Promise<string>;
+    listSessions: () => Promise<ChatSessionSummary[]>;
+    loadSession: (sessionId: string) => Promise<ChatMessageRow[]>;
   };
   mcp: {
     getContext: (intent: string) => Promise<{ intent: string; entities: any[] }>;

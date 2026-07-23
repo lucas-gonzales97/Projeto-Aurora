@@ -89,6 +89,14 @@ function MicIcon() {
     </svg>
   );
 }
+function HistoryIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 7v5l3 3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 function ClipIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -259,16 +267,46 @@ interface ChatMsg {
   images?: ChatImage[];
 }
 
+// Saudação de UI (não persistida em chat.db — não é fala do modelo). Sem
+// alegação de conhecer o usuário: com vault vazio isso seria confabulação de
+// interface (ADR-0009).
+const GREETING: ChatMsg = {
+  role: "assistant",
+  text: "Oi. Eu sou a Aurora — Desktop v0. Minha memória vem do teu vault via noesis-mcp, e eu ouço, falo e vejo imagem. O que a gente ataca?",
+};
+
 function useAuroraChat(onAssistantReply: (text: string) => void) {
-  const [messages, setMessages] = useState<ChatMsg[]>([
-    { role: "assistant", text:
-      "Oi. Eu sou a Aurora — Desktop v0. Já conheço teus goals e hábitos do vault via noesis-mcp, e agora também ouço, falo e vejo imagem. O que a gente ataca?" },
-  ]);
+  const [messages, setMessages] = useState<ChatMsg[]>([GREETING]);
   const [busy, setBusy] = useState(false);
   const requestIdRef = useRef<string | null>(null);
   const streamBufferRef = useRef("");
   const onAssistantReplyRef = useRef(onAssistantReply);
   onAssistantReplyRef.current = onAssistantReply;
+
+  // Persistência (ADR-0011): sessão criada de forma preguiçosa no primeiro
+  // envio (evita gravar sessão pra quem só abriu e fechou o app; sessões sem
+  // mensagem nem apareceriam na listagem, mas melhor nem criar a linha).
+  const sessionIdRef = useRef<string | null>(null);
+  async function ensureSession(): Promise<string | null> {
+    if (sessionIdRef.current) return sessionIdRef.current;
+    try {
+      const id = crypto.randomUUID();
+      await window.aurora.chat.newSession(id);
+      sessionIdRef.current = id;
+      return id;
+    } catch (err) {
+      console.warn("chat.db indisponível — conversa segue sem persistir:", err);
+      return null;
+    }
+  }
+
+  /** Carrega uma sessão antiga do chat.db e CONTINUA nela. */
+  async function loadSession(sessionId: string) {
+    if (busy) return;
+    const rows = await window.aurora.chat.loadSession(sessionId);
+    sessionIdRef.current = sessionId;
+    setMessages(rows.map((r) => ({ role: r.role, text: r.content })));
+  }
 
   useEffect(() => {
     const offChunk = window.aurora.chat.onChunk(({ requestId, delta }) => {
@@ -327,8 +365,18 @@ function useAuroraChat(onAssistantReply: (text: string) => void) {
     const requestId = crypto.randomUUID();
     requestIdRef.current = requestId;
 
+    // Persiste a mensagem do usuário; a resposta do assistente é gravada no
+    // MAIN process (chat:done), com model/provider autoritativos (ADR-0011).
+    const sessionId = await ensureSession();
+    if (sessionId) {
+      window.aurora.chat
+        .append({ sessionId, role: "user", content: text || "(imagem)" })
+        .catch((err) => console.warn("chat.db: falha ao persistir mensagem do usuário:", err));
+    }
+
     window.aurora.chat.send({
       requestId,
+      sessionId: sessionId ?? undefined,
       system: buildChatSystemPrompt(intent, contextEntities),
       messages: history.map((m) => ({
         role: m.role,
@@ -349,7 +397,7 @@ function useAuroraChat(onAssistantReply: (text: string) => void) {
       .catch((err) => console.warn("log_event indisponível (noesis-mcp offline?):", err));
   }
 
-  return { messages, busy, send };
+  return { messages, busy, send, loadSession };
 }
 
 function Chat({ chat, tab }: { chat: ReturnType<typeof useAuroraChat>; tab: string }) {
@@ -432,8 +480,67 @@ function Chat({ chat, tab }: { chat: ReturnType<typeof useAuroraChat>; tab: stri
     doSend(transcript);
   });
 
+  // Histórico de sessões (ADR-0011) — lista do chat.db, carregar = retomar.
+  type SessionSummary = Awaited<ReturnType<typeof window.aurora.chat.listSessions>>[number];
+  const [showHistory, setShowHistory] = useState(false);
+  const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
+  function toggleHistory() {
+    const next = !showHistory;
+    setShowHistory(next);
+    if (next) {
+      window.aurora.chat
+        .listSessions()
+        .then(setSessions)
+        .catch((err) => { console.warn("chat.db: falha ao listar sessões:", err); setSessions([]); });
+    }
+  }
+  function fmtSessionDate(iso: string): string {
+    const d = new Date(iso);
+    return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(d);
+  }
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" style={{ position: "relative" }}>
+      {showHistory && (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 20, background: C.bg,
+          display: "flex", flexDirection: "column",
+        }}>
+          <div className="flex items-center justify-between px-3" style={{ padding: "10px 12px", borderBottom: `1px solid ${C.line}` }}>
+            <span className="aur-display" style={{ fontSize: 13, fontWeight: 600, color: C.bone }}>Conversas anteriores</span>
+            <button onClick={() => setShowHistory(false)} className="aur-mono"
+              style={{ color: C.dim, fontSize: 11, background: "transparent", border: `1px solid ${C.line}`, borderRadius: 8, padding: "4px 8px", cursor: "pointer" }}>
+              fechar
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-3 py-3" style={{ minHeight: 0 }}>
+            {sessions === null && <p style={{ color: C.dim, fontSize: 12 }}>Lendo chat.db…</p>}
+            {sessions?.length === 0 && (
+              <p style={{ color: C.dim, fontSize: 12, lineHeight: 1.5 }}>
+                Nenhuma conversa gravada ainda. A partir de agora, tudo o que vocês
+                conversarem fica guardado aqui, nesta máquina.
+              </p>
+            )}
+            {sessions?.map((s) => (
+              <button key={s.id}
+                onClick={() => { chat.loadSession(s.id).catch((err) => console.warn("chat.db: falha ao carregar sessão:", err)); setShowHistory(false); }}
+                className="text-left w-full"
+                style={{
+                  background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12,
+                  padding: "10px 12px", marginBottom: 8, cursor: "pointer", display: "block",
+                }}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="aur-mono" style={{ fontSize: 10.5, color: C.phosphor }}>{fmtSessionDate(s.started_at)}</span>
+                  <span className="aur-mono" style={{ fontSize: 10, color: C.dim }}>{s.message_count} msg</span>
+                </div>
+                <div style={{ fontSize: 12.5, color: C.bone, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {s.preview ?? "(sem mensagem de usuário)"}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div
         className="flex-1 overflow-y-auto px-3 py-3"
         style={{ minHeight: 0, outline: dragOver ? `2px dashed ${C.copper}` : "none" }}
@@ -499,6 +606,12 @@ function Chat({ chat, tab }: { chat: ReturnType<typeof useAuroraChat>; tab: stri
         <div className="flex gap-2 items-end pt-2">
           <input ref={fileInputRef} type="file" accept="image/*" hidden
             onChange={(e) => { if (e.target.files) handleFiles(e.target.files); e.target.value = ""; }} />
+          <button onClick={toggleHistory} title="Conversas anteriores"
+            style={{
+              background: showHistory ? C.panelUp : C.panel, color: showHistory ? C.phosphor : C.dim,
+              border: `1px solid ${C.line}`, borderRadius: 10,
+              padding: "10px", cursor: "pointer", display: "flex",
+            }}><HistoryIcon /></button>
           <button onClick={() => fileInputRef.current?.click()} title="Anexar imagem"
             style={{
               background: C.panel, color: C.dim, border: `1px solid ${C.line}`, borderRadius: 10,
