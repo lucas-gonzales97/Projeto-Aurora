@@ -154,6 +154,18 @@ function checkFile(absPath: string): string[] {
     }
   }
 
+  // importance (opcional, ADR-0010): quando presente, numérico em [0,10].
+  // Mesma regra em scripts/validate_frontmatter.py — manter sincronizado.
+  const imp = fm.importance;
+  if (imp) {
+    const x = Number(imp);
+    if (Number.isNaN(x)) {
+      errs.push(`${absPath}: importance='${imp}' não é numérico`);
+    } else if (x < 0 || x > 10) {
+      errs.push(`${absPath}: importance=${imp} fora de [0,10]`);
+    }
+  }
+
   const created = fm.created ?? "";
   if (created && !isIsoDate(created)) {
     errs.push(`${absPath}: created='${created}' não é data ISO (YYYY-MM-DD)`);

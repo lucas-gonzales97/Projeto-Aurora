@@ -1,0 +1,15 @@
+{
+  "description": "Bancada A/B do retrieval triplo (ADR-0010). Intents reais de uso, cobrindo goals/habits/projects/skills do vault. Rodar com: npm run bench",
+  "queries": [
+    { "id": "q01", "intent": "emprego e trabalho" },
+    { "id": "q02", "intent": "minha saúde física e treino" },
+    { "id": "q03", "intent": "projeto noesis" },
+    { "id": "q04", "intent": "rotina de suplementação" },
+    { "id": "q05", "intent": "como estão minhas finanças" },
+    { "id": "q06", "intent": "faculdade e TCC" },
+    { "id": "q07", "intent": "vida social e amigos" },
+    { "id": "q08", "intent": "saúde mental" },
+    { "id": "q09", "intent": "freelance e renda extra" },
+    { "id": "q10", "intent": "hidratação e beber água" }
+  ]
+}

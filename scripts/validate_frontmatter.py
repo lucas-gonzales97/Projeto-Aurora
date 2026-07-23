@@ -91,6 +91,15 @@ def check_file(path):
                     errs.append(f"{path}: {numf}={v} fora de [0,1]")
             except ValueError:
                 errs.append(f"{path}: {numf}='{v}' não é numérico")
+    # importance (opcional, ADR-0010): quando presente, numérico em [0,10]
+    v = fm.get("importance", "")
+    if isinstance(v, str) and v:
+        try:
+            x = float(v)
+            if not (0.0 <= x <= 10.0):
+                errs.append(f"{path}: importance={v} fora de [0,10]")
+        except ValueError:
+            errs.append(f"{path}: importance='{v}' não é numérico")
     # created deve ser data ISO
     c = fm.get("created", "")
     if isinstance(c, str) and c:
