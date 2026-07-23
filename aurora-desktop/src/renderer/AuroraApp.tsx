@@ -90,6 +90,20 @@ function MicIcon() {
     </svg>
   );
 }
+function MaximizeIcon({ maximized }: { maximized: boolean }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      {maximized ? (
+        <>
+          <rect x="8" y="8" width="12" height="12" rx="1.5" />
+          <path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" strokeLinecap="round" />
+        </>
+      ) : (
+        <rect x="4" y="4" width="16" height="16" rx="1.5" />
+      )}
+    </svg>
+  );
+}
 function HistoryIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -268,6 +282,25 @@ interface ChatMsg {
   images?: ChatImage[];
 }
 
+// Traduz erros crus do provedor em mensagens que ajudam o usuário a resolver,
+// em vez de despejar o JSON da API. Caso real observado: modelo só-texto
+// recebendo imagem anexada devolve 404 "No endpoints found that support image
+// input" — o usuário não tem como adivinhar que o problema é o modelo, não a
+// rede. Casos não mapeados caem no texto genérico (com o detalhe técnico junto).
+function friendlyChatError(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes("image input") || (m.includes("image") && m.includes("support"))) {
+    return "O modelo escolhido não aceita imagens. Para enviar imagem, escolha um modelo com visão na aba Config — ou reenvie a mensagem sem o anexo.";
+  }
+  if (m.includes("429") || m.includes("rate limit") || m.includes("quota")) {
+    return "O provedor atingiu o limite de uso (rate limit). Espere um pouco e tente de novo, ou troque de provedor/modelo na aba Config.";
+  }
+  if (m.includes("401") || m.includes("invalid") && m.includes("key")) {
+    return "A chave do provedor parece inválida ou expirada. Confira em Config (testar a chave).";
+  }
+  return `Falha de conexão com o motor: ${message}`;
+}
+
 // Saudação de UI (não persistida em chat.db — não é fala do modelo). Sem
 // alegação de conhecer o usuário: com vault vazio isso seria confabulação de
 // interface (ADR-0009).
@@ -335,7 +368,7 @@ function useAuroraChat(onAssistantReply: (text: string) => void) {
       if (requestId !== requestIdRef.current) return;
       setMessages((prev) => {
         const next = [...prev];
-        next[next.length - 1] = { role: "assistant", text: `Falha de conexão com o motor: ${message}` };
+        next[next.length - 1] = { role: "assistant", text: friendlyChatError(message) };
         return next;
       });
       setBusy(false);
@@ -415,7 +448,9 @@ function Chat({ chat, tab }: { chat: ReturnType<typeof useAuroraChat>; tab: stri
   const [voiceStatus, setVoiceStatus] = useState("carregando…");
 
   useEffect(() => {
-    if (tab !== "chat") return;
+    // Atualiza o status na aba Conversa E na aba Mente (o cockpit tem o chat
+    // ao lado do grafo) — nos dois é onde o motor/voz pode ter mudado.
+    if (tab !== "chat" && tab !== "grafo") return;
     let cancelled = false;
     Promise.all([
       window.aurora.providers.getActive(),
@@ -1176,13 +1211,32 @@ export default function AuroraApp() {
 
   const chat = useAuroraChat(handleAssistantReply);
 
+  // Estado da janela: maximizada (pro botão do header refletir) e largura
+  // (pro cockpit da aba Mente virar split só quando há espaço).
+  const [maximized, setMaximized] = useState(true);
+  const [wide, setWide] = useState(() => window.innerWidth >= 900);
+  useEffect(() => {
+    window.aurora.window.isMaximized().then(setMaximized).catch(() => {});
+    const offMax = window.aurora.window.onMaximizedChanged(setMaximized);
+    const onResize = () => setWide(window.innerWidth >= 900);
+    window.addEventListener("resize", onResize);
+    return () => { offMax(); window.removeEventListener("resize", onResize); };
+  }, []);
+
   const tabs: { id: "chat" | "painel" | "grafo" | "auto" | "settings"; label: string }[] = [
     { id: "chat", label: "Conversa" },
     { id: "painel", label: "Painel" },
-    { id: "grafo", label: "Grafo" },
+    { id: "grafo", label: "Mente" },
     { id: "auto", label: "Automações" },
     { id: "settings", label: "Config" },
   ];
+
+  // Nas abas que não são o grafo, centraliza o conteúdo numa coluna legível
+  // (senão os balões/cards esticam demais na tela cheia). O grafo usa a
+  // largura toda (cockpit).
+  const Col = ({ children }: { children: React.ReactNode }) => (
+    <div style={{ maxWidth: 760, width: "100%", margin: "0 auto", height: "100%" }}>{children}</div>
+  );
 
   return (
     <div className="flex flex-col" style={{
@@ -1213,6 +1267,11 @@ export default function AuroraApp() {
             style={{ background: "transparent", color: C.dim, border: `1px solid ${C.line}`, borderRadius: 8, padding: 6, cursor: "pointer", display: "flex" }}>
             <MinimizeIcon />
           </button>
+          <button onClick={() => window.aurora.window.toggleMaximize().then(setMaximized)}
+            title={maximized ? "Restaurar janela" : "Maximizar (tela cheia)"}
+            style={{ background: "transparent", color: C.dim, border: `1px solid ${C.line}`, borderRadius: 8, padding: 6, cursor: "pointer", display: "flex" }}>
+            <MaximizeIcon maximized={maximized} />
+          </button>
           <button onClick={() => window.aurora.window.close()} title="Fechar"
             style={{ background: "transparent", color: C.dim, border: `1px solid ${C.line}`, borderRadius: 8, padding: 6, cursor: "pointer", display: "flex" }}>
             <CloseIcon />
@@ -1230,15 +1289,30 @@ export default function AuroraApp() {
         {phase === "app" && (
           <>
             <div style={{ display: tab === "chat" ? "block" : "none", height: "100%" }}>
-              <Chat chat={chat} tab={tab} />
+              <Col><Chat chat={chat} tab={tab} /></Col>
             </div>
-            {tab === "painel" && <Painel />}
-            {/* Grafo montado só quando visível (physics do vis-network não
-                precisa rodar em background), mas o graph:activated do chat
-                continua chegando: ao reabrir a aba o snapshot é recarregado. */}
-            {tab === "grafo" && <GraphView />}
-            {tab === "auto" && <Automacoes />}
-            {tab === "settings" && <Settings />}
+            {tab === "painel" && <Col><Painel /></Col>}
+            {/* Aba Mente (cockpit): em tela larga, grafo grande + conversa
+                completa ao lado (mesma voz/imagem). Em janela estreita, só o
+                grafo (a conversa continua na aba Conversa). O grafo é montado
+                só quando visível — a física do vis-network não roda em
+                background; o graph:activated chega enquanto a aba está aberta. */}
+            {tab === "grafo" && (
+              wide ? (
+                <div className="flex h-full">
+                  <div className="flex-1" style={{ minWidth: 0 }}>
+                    <GraphView />
+                  </div>
+                  <div style={{ width: 420, height: "100%", borderLeft: `1px solid ${C.line}`, display: "flex", flexDirection: "column" }}>
+                    <Chat chat={chat} tab={tab} />
+                  </div>
+                </div>
+              ) : (
+                <GraphView />
+              )
+            )}
+            {tab === "auto" && <Col><Automacoes /></Col>}
+            {tab === "settings" && <Col><Settings /></Col>}
           </>
         )}
       </main>

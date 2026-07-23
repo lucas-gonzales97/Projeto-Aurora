@@ -200,10 +200,12 @@ function createWindow() {
   const iconImage = nativeImage.createFromPath(ICON_PATH);
 
   mainWindow = new BrowserWindow({
-    width: 420,
-    height: 780,
+    width: 1280,
+    height: 840,
+    minWidth: 380,
+    minHeight: 600,
     frame: false,
-    resizable: false,
+    resizable: true,
     alwaysOnTop: process.env.AURORA_ALWAYS_ON_TOP === "1",
     backgroundColor: "#0C1517",
     // build/icon.png (gerado por `npm run icons` a partir de assets/icon.svg,
@@ -219,12 +221,23 @@ function createWindow() {
     },
   });
 
+  // Abre já maximizado (tela cheia) — o cockpit da aba Mente precisa de
+  // largura pra mostrar o grafo e a conversa lado a lado. O usuário pode
+  // restaurar pra janela flutuante pelo botão de maximizar/restaurar no header.
+  mainWindow.maximize();
+
   if (isDev) {
     mainWindow.loadURL(RENDERER_DEV_URL);
     mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
     mainWindow.loadFile(RENDERER_BUILD_FILE);
   }
+
+  // Avisa o renderer quando o estado de maximização muda (o botão do header
+  // reflete o estado real, inclusive maximização por atalho/duplo-clique do SO).
+  const emitMaxState = () => mainWindow?.webContents.send("window:maximized-changed", mainWindow.isMaximized());
+  mainWindow.on("maximize", emitMaxState);
+  mainWindow.on("unmaximize", emitMaxState);
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -258,6 +271,21 @@ ipcMain.handle("window:toggle-always-on-top", (event) => {
   const next = !win.isAlwaysOnTop();
   win.setAlwaysOnTop(next);
   return next;
+});
+
+ipcMain.handle("window:toggle-maximize", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return false;
+  if (win.isMaximized()) {
+    win.unmaximize();
+    return false;
+  }
+  win.maximize();
+  return true;
+});
+
+ipcMain.handle("window:is-maximized", (event) => {
+  return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false;
 });
 
 // --- IPC: noesis-mcp ---

@@ -95,6 +95,9 @@ interface AuroraBridge {
     close: () => void;
     minimize: () => void;
     toggleAlwaysOnTop: () => Promise<boolean>;
+    toggleMaximize: () => Promise<boolean>;
+    isMaximized: () => Promise<boolean>;
+    onMaximizedChanged: (cb: (maximized: boolean) => void) => () => void;
   };
   onboarding: {
     isFirstRun: () => Promise<boolean>;

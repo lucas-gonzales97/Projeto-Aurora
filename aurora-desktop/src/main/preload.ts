@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld("aurora", {
     close: () => ipcRenderer.send("window:close"),
     minimize: () => ipcRenderer.send("window:minimize"),
     toggleAlwaysOnTop: () => ipcRenderer.invoke("window:toggle-always-on-top") as Promise<boolean>,
+    toggleMaximize: () => ipcRenderer.invoke("window:toggle-maximize") as Promise<boolean>,
+    isMaximized: () => ipcRenderer.invoke("window:is-maximized") as Promise<boolean>,
+    onMaximizedChanged: (cb: (maximized: boolean) => void) => on("window:maximized-changed", cb),
   },
   onboarding: {
     isFirstRun: () => ipcRenderer.invoke("aurora:is-first-run") as Promise<boolean>,
