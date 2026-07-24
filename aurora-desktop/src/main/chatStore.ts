@@ -125,9 +125,25 @@ export class ChatStore {
     return id;
   }
 
-  async endSession(id: string, endedAt: string = new Date().toISOString()): Promise<void> {
+  /**
+   * summary (ADR-0013): quando o job de reflexão de fim de sessão sintetiza
+   * algo, a síntese fica aqui — não em outra tabela — porque é sobre ESSA
+   * sessão especificamente. null = sessão encerrada sem reflexão nova (a
+   * maioria: threshold não atingido, ou o LLM decidiu que não havia padrão).
+   */
+  async endSession(id: string, endedAt: string = new Date().toISOString(), summary: string | null = null): Promise<void> {
     await this.ready;
-    await this.run("UPDATE sessions SET ended_at = ? WHERE id = ?", [endedAt, id]);
+    await this.run("UPDATE sessions SET ended_at = ?, summary = ? WHERE id = ?", [endedAt, summary, id]);
+  }
+
+  /** Linha crua da sessão (sem join de mensagens) — usada pelo job de reflexão pra checar se já foi encerrada. */
+  async getSession(id: string): Promise<{ id: string; started_at: string; ended_at: string | null; summary: string | null } | null> {
+    await this.ready;
+    const rows = await this.all<{ id: string; started_at: string; ended_at: string | null; summary: string | null }>(
+      "SELECT id, started_at, ended_at, summary FROM sessions WHERE id = ?",
+      [id],
+    );
+    return rows[0] ?? null;
   }
 
   /** Sessões com mensagens, mais recente primeiro, com contagem e preview da 1ª msg do usuário. */

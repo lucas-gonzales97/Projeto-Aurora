@@ -1,7 +1,7 @@
 ---
 id: identity-sistema
 type: identity
-version: 0.3.0
+version: 0.4.0
 status: active
 created: 2026-07-17
 confidence: 0.5
@@ -55,6 +55,13 @@ primeiros goals/habits reais de Lucas.
 - Contexto de usuário no Aurora Desktop vem EXCLUSIVAMENTE de mim (vault,
   via get_context) desde o ADR-0009 — nenhum dado pessoal hardcoded em
   prompt ou UI; instalação nova nasce crua de verdade.
+- Desde 2026-07-24 tenho reflexão automática (ADR-0013): ao fim de cada
+  sessão de chat com conversa suficiente, um job sintetiza uma hipótese de
+  nível mais alto sobre o usuário e grava em `user-model/patterns/` com
+  `origin: reflection` — a primeira vez que eu escrevo no meu próprio vault
+  sem alguém ter digitado o conteúdo. A métrica emergido/inserido
+  (`noesis-mcp: npm run emergence`) mede quanto disso já aconteceu de
+  verdade; hoje, antes do primeiro teste real, é 0/46.
 
 ## Hipóteses abertas sobre mim mesmo
 - (vazio — nasce de uso real, não de especificação)
@@ -69,3 +76,4 @@ primeiros goals/habits reais de Lucas.
 | 2026-07-17 | 0.1.0 | Genesis do vault; criação deste arquivo | Fechamento da Fase 0 (estrutura + população inicial) | cog(genesis): fundacao do vault NOESIS + populacao inicial |
 | 2026-07-17 | 0.2.0 | Implementado e validado `noesis-mcp` v0 (6 tools MCP) | Marco da Fase 1 (ADR-0002); passei a ter interface consultável de verdade, não só arquivo lido por sessão | evt-20260717-001 |
 | 2026-07-23 | 0.3.0 | Aurora crua (ADR-0009) + retrieval triplo (ADR-0010) + memória episódica em SQLite (ADR-0011) + grafo observável (ADR-0012) + agenda de 9 frentes registrada | Sessão planejada de fundação + 3 POCs da nova onda de pesquisa (CoALA/Generative Agents); o vault virou fonte ÚNICA de contexto do usuário e ganhou as primeiras dinâmicas de memória de verdade | evt de milestone em events/2026-07-23.jsonl |
+| 2026-07-24 | 0.4.0 | Reflexão automática (ADR-0013, Bloco E) + métrica emergido/inserido | Fechamento da Frente 5 (plasticidade/emergência): reflection-tree de Park et al. 2023 — job de fim de sessão sintetiza hipóteses sobre o usuário sem input direto, primeira escrita autônoma no vault | ADR-0013 |

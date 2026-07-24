@@ -12,7 +12,8 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "test": "tsx --test tests/*.test.ts",
-    "bench": "tsx bench/run-bench.ts"
+    "bench": "tsx bench/run-bench.ts",
+    "emergence": "tsx bench/emergence-ratio.ts"
   },
   "keywords": [],
   "author": "",

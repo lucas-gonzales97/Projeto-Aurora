@@ -94,6 +94,23 @@ describe("ChatStore — listagem de sessões", () => {
     await store.endSession("s1", "2026-07-23T09:30:00.000Z");
     const [s] = await store.listSessions();
     expect(s.ended_at).toBe("2026-07-23T09:30:00.000Z");
+    expect(s.summary).toBeNull();
+  });
+
+  it("endSession com summary (ADR-0013): grava a síntese da reflexão junto com ended_at", async () => {
+    await store.newSession("s2", "2026-07-23T09:00:00.000Z");
+    await store.appendMessage({ sessionId: "s2", role: "user", content: "oi" });
+    await store.endSession("s2", "2026-07-23T09:30:00.000Z", "usuário evita falar de finanças.");
+    const [s] = await store.listSessions();
+    expect(s.summary).toBe("usuário evita falar de finanças.");
+  });
+
+  it("getSession: retorna a linha crua mesmo sem mensagens; null se não existe", async () => {
+    await store.newSession("vazia2", "2026-07-23T09:00:00.000Z");
+    const found = await store.getSession("vazia2");
+    expect(found?.id).toBe("vazia2");
+    expect(found?.ended_at).toBeNull();
+    expect(await store.getSession("nao-existe")).toBeNull();
   });
 });
 

@@ -23,7 +23,7 @@ entity_types:
     origin: [declared]
   hypothesis:
     campos_obrigatorios: [id, type, status, created, confidence, origin]
-    origin: [inferred, aurora, declared, co-created, daemon, session]
+    origin: [inferred, aurora, declared, co-created, daemon, session, reflection]
     subtypes: [user-pattern, strategy]
   project:
     campos_obrigatorios: [id, type, status, created, domain]
@@ -66,5 +66,8 @@ relation_kinds:
   avanca_com: "genérico — A progride quando B progride"
 
 notas:
-  - "patterns/ só recebe entidades type: hypothesis subtype: user-pattern, nunca criadas manualmente."
+  - "user-model/patterns/ só recebe entidades type: hypothesis subtype: user-pattern, nunca criadas
+    manualmente. origin: reflection marca as que emergiram do job de reflexão automática
+    (ADR-0013) — é o sinal que a métrica emergido/inserido usa pra distinguir o que a Aurora
+    sintetizou sozinha do que entrou por mão humana/onboarding."
   - "id de goal/habit/project/value/skill deve bater com o nome do arquivo (validate_frontmatter.py já impõe isso)."

@@ -45,7 +45,7 @@ const RULES: Record<string, TypeRule> = {
   },
   hypothesis: {
     extra: ["confidence", "origin"],
-    allowed: { origin: new Set(["inferred", "aurora", "declared", "co-created", "daemon", "session"]) },
+    allowed: { origin: new Set(["inferred", "aurora", "declared", "co-created", "daemon", "session", "reflection"]) },
   },
   project: { extra: ["domain"], allowed: { status: new Set(["active", "paused", "done"]) } },
   decision: { extra: [], allowed: {} },

@@ -22,6 +22,16 @@ import { synthesizeSpeech, validateAzureSpeechConfig } from "./tts/azureSpeech.j
 import { ChatStore } from "./chatStore.js";
 import { buildGraphSnapshot } from "./graphSnapshot.js";
 import dynamicImport from "./esmImport.js";
+import {
+  countUserMessages,
+  shouldReflect,
+  REFLECTION_SYSTEM_PROMPT,
+  buildReflectionPrompt,
+  parseReflectionResponse,
+  buildReflectionNoteId,
+  buildReflectionNoteBody,
+  buildReflectionRelations,
+} from "./reflection.js";
 
 // Vault root e local do noesis-mcp — dois cenários bem diferentes (ver
 // decisions/ADR-0008-vault-por-instalacao.md):
@@ -256,6 +266,24 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
+// --- Reflexão automática (ADR-0013): dispara o job de fim de sessão antes do
+// quit de verdade acontecer. Sem preventDefault aqui, o Electron mata o
+// processo assim que este handler síncrono retorna — a chamada ao LLM (que é
+// assíncrona) nunca chegaria a rodar. `quitting` evita reentrar neste ramo
+// quando ESTE MESMO handler chama app.quit() de novo ao final.
+let quitting = false;
+const REFLECTION_QUIT_TIMEOUT_MS = 20_000; // nunca trava o quit indefinidamente por uma chamada de LLM lenta/pendurada
+app.on("before-quit", (event) => {
+  if (quitting || !currentSessionId) return;
+  const sessionId = currentSessionId;
+  event.preventDefault();
+  quitting = true;
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, REFLECTION_QUIT_TIMEOUT_MS));
+  Promise.race([runReflectionJob(sessionId), timeout])
+    .catch((err) => console.warn("reflexão: job de fim de sessão falhou:", err))
+    .finally(() => app.quit());
+});
+
 // --- IPC: janela (necessário porque a janela é frameless) ---
 ipcMain.on("window:close", (event) => {
   BrowserWindow.fromWebContents(event.sender)?.close();
@@ -360,8 +388,16 @@ function getChatStore(): ChatStore {
   return chatStore;
 }
 
+// Sessão "ativa" da janela, do ponto de vista do job de reflexão (ADR-0013)
+// — não existe conceito de janela/sessão múltipla ainda, uma serve o app
+// inteiro. Fica null até a primeira mensagem (ensureSession no renderer é
+// preguiçoso) — é exatamente esse null que faz o hook de before-quit não
+// fazer nada quando o usuário só abriu e fechou o app sem conversar.
+let currentSessionId: string | null = null;
+
 ipcMain.handle("chat:new-session", async (_event, sessionId: string) => {
   await getChatStore().newSession(sessionId);
+  currentSessionId = sessionId;
 });
 
 ipcMain.handle("chat:append", async (_event, payload: {
@@ -379,8 +415,107 @@ ipcMain.handle("chat:list-sessions", async () => {
 });
 
 ipcMain.handle("chat:load-session", async (_event, sessionId: string) => {
+  currentSessionId = sessionId;
   return getChatStore().loadSession(sessionId);
 });
+
+// --- Reflexão automática (ADR-0013) ---
+// Job de fim de sessão (reflection-tree, Park et al. 2023): se a sessão teve
+// conversa suficiente, sintetiza UMA hipótese de nível mais alto sobre o
+// usuário via LLM e grava como nota em user-model/patterns (origin:
+// reflection) — o sinal que a métrica emergido/inserido usa (noesis-mcp
+// bench/emergence-ratio.ts). Reflete no máximo uma vez por sessão: o gate é
+// `ended_at IS NULL`, então retomar uma sessão já encerrada e continuar
+// conversando NÃO dispara reflexão de novo nesta v0 (limitação conhecida,
+// ver ADR-0013 "Limitações").
+async function runReflectionJob(sessionId: string): Promise<void> {
+  const store = getChatStore();
+  const session = await store.getSession(sessionId);
+  if (!session || session.ended_at) return;
+
+  const rows = await store.loadSession(sessionId);
+  const messages = rows.map((r) => ({ role: r.role as "user" | "assistant", content: r.content }));
+  const userCount = countUserMessages(messages);
+
+  if (!shouldReflect(userCount)) {
+    await store.endSession(sessionId);
+    return;
+  }
+
+  // Entidades "ativadas" pela sessão inteira: reaproveita o mesmo get_context
+  // do retrieval do chat (ADR-0010), com a concatenação das falas do usuário
+  // como intent — evita ter que acumular estado por turno só pra isso.
+  let activatedEntities: { id: string; title?: string | null }[] = [];
+  try {
+    const intent = messages.filter((m) => m.role === "user").map((m) => m.content).join(" ").slice(0, 4000);
+    const ctx = await callMcpTool("get_context", { intent });
+    activatedEntities = (ctx?.entities ?? [])
+      .filter((e: any) => e?.id)
+      .map((e: any) => ({ id: e.id as string, title: e.title ?? null }));
+  } catch (err) {
+    console.warn("reflexão: get_context indisponível, seguindo sem entidades ativadas:", err);
+  }
+
+  let raw = "";
+  try {
+    const providerId = await getActiveProvider();
+    const provider = PROVIDER_REGISTRY[providerId];
+    const model = await getActiveModel();
+    if (!provider || !model) throw new Error("nenhum provedor/modelo ativo configurado");
+    const apiKey = provider.requiresApiKey ? await getProviderKey(providerId) : "";
+    if (provider.requiresApiKey && !apiKey) throw new Error(`sem chave configurada para ${provider.label}`);
+
+    const result = await provider.sendMessage({
+      apiKey: apiKey ?? "",
+      model,
+      system: REFLECTION_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: [{ type: "text", text: buildReflectionPrompt(messages, activatedEntities) }] }],
+    });
+    raw = result.text;
+  } catch (err) {
+    console.warn("reflexão: chamada ao LLM falhou — sessão encerrada sem reflexão:", err);
+    await store.endSession(sessionId);
+    return;
+  }
+
+  const parsed = parseReflectionResponse(raw);
+  if (parsed.skip || !parsed.body) {
+    await store.endSession(sessionId);
+    return;
+  }
+
+  const createdISO = new Date().toISOString().slice(0, 10);
+  const noteId = buildReflectionNoteId(sessionId, createdISO);
+  try {
+    await callMcpTool("create_note", {
+      type: "hypothesis",
+      id: noteId,
+      dir: "user-model/patterns",
+      status: "active",
+      created: createdISO,
+      fields: {
+        confidence: parsed.confidence,
+        origin: "reflection",
+        subtype: "user-pattern",
+        session_id: sessionId,
+      },
+      relations: buildReflectionRelations(activatedEntities),
+      body: buildReflectionNoteBody(parsed.body, parsed.confidence ?? 0.3, activatedEntities.length),
+    });
+    await callMcpTool("log_event", {
+      type: "reflection-created",
+      summary: parsed.body,
+      entities: [noteId, ...activatedEntities.map((e) => e.id)],
+      data: { session_id: sessionId, user_message_count: userCount, confidence: parsed.confidence },
+    });
+  } catch (err) {
+    console.warn("reflexão: falha ao gravar nota/evento — sessão encerrada sem reflexão persistida:", err);
+    await store.endSession(sessionId);
+    return;
+  }
+
+  await store.endSession(sessionId, new Date().toISOString(), parsed.body);
+}
 
 // --- IPC: chat (streaming, multi-provedor — ADR-0006) ---
 interface ChatSendPayload {

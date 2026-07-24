@@ -25,7 +25,7 @@ RULES = {
                     "status": {"active", "consolidated", "abandoned"},
                     "origin": {"declared"}}),
     "hypothesis": (["confidence", "origin"],
-                   {"origin": {"inferred", "aurora", "declared", "co-created", "daemon", "session"}}),
+                   {"origin": {"inferred", "aurora", "declared", "co-created", "daemon", "session", "reflection"}}),
     "project":    (["domain"], {"status": {"active", "paused", "done"}}),
     "decision":   ([], {}),
     "identity":   (["version", "confidence", "mutable_by_system"], {}),
