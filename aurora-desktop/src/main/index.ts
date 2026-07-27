@@ -434,7 +434,7 @@ async function runReflectionJob(sessionId: string): Promise<void> {
   if (!session || session.ended_at) return;
 
   const rows = await store.loadSession(sessionId);
-  const messages = rows.map((r) => ({ role: r.role as "user" | "assistant", content: r.content }));
+  const messages = rows.map((r) => ({ role: r.role as "user" | "assistant", content: r.content, ts: r.ts }));
   const userCount = countUserMessages(messages);
 
   if (!shouldReflect(userCount)) {

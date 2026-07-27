@@ -8,6 +8,24 @@
 export interface ReflectionMessage {
   role: "user" | "assistant";
   content: string;
+  /** ISO da mensagem (chat.db). Opcional: transcrição antiga pode não ter. */
+  ts?: string;
+}
+
+// Fuso do usuário — mesmo de nowContext (prompt.ts). O renderer tem seu próprio
+// formatador (chatTime.ts) porque main e renderer têm rootDir separados; aqui
+// só se repete "formatar ISO em America/Sao_Paulo", não uma regra de negócio:
+// a transcrição precisa de data absoluta por linha, a UI agrupa por dia.
+const TZ = "America/Sao_Paulo";
+
+/** "24/07/2026 14:16" no fuso do usuário; "" se ausente/inválido. */
+export function formatMessageTime(iso: string | undefined, tz: string = TZ): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const date = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
+  const time = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, hour: "2-digit", minute: "2-digit" }).format(d);
+  return `${date} ${time}`;
 }
 
 export interface ReflectionEntity {
@@ -44,8 +62,13 @@ CONFIANÇA: <número entre 0.1 e 0.6>
 REFLEXÃO: <uma frase objetiva, em português, descrevendo o padrão>`;
 
 export function buildReflectionPrompt(messages: ReflectionMessage[], activatedEntities: ReflectionEntity[]): string {
+  // Cada linha datada: sem isso a reflexão lia a conversa como um bloco sem
+  // tempo e não podia notar ritmo, retomada depois de dias ou pausa longa.
   const transcript = messages.length > 0
-    ? messages.map((m) => `${m.role === "user" ? "Usuário" : "Aurora"}: ${m.content}`).join("\n")
+    ? messages.map((m) => {
+        const when = formatMessageTime(m.ts);
+        return `${when ? `[${when}] ` : ""}${m.role === "user" ? "Usuário" : "Aurora"}: ${m.content}`;
+      }).join("\n")
     : "(sessão sem mensagens)";
   const entitiesBlock = activatedEntities.length > 0
     ? activatedEntities.map((e) => `- ${e.id}${e.title ? ` — ${e.title}` : ""}`).join("\n")

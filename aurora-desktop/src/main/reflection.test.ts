@@ -8,6 +8,7 @@ import {
   buildReflectionNoteId,
   buildReflectionNoteBody,
   buildReflectionRelations,
+  formatMessageTime,
   type ReflectionMessage,
 } from "./reflection";
 
@@ -126,5 +127,36 @@ describe("buildReflectionRelations", () => {
 
   it("lista vazia: nenhuma relação", () => {
     expect(buildReflectionRelations([])).toEqual([]);
+  });
+});
+
+describe("formatMessageTime (temporalidade)", () => {
+  it("formata no fuso do usuário, não em UTC", () => {
+    expect(formatMessageTime("2026-07-24T17:16:00Z")).toBe("24/07/2026 14:16");
+  });
+
+  it("é vazio pra ts ausente ou inválido (nunca quebra a transcrição)", () => {
+    expect(formatMessageTime(undefined)).toBe("");
+    expect(formatMessageTime("nao-e-data")).toBe("");
+  });
+});
+
+describe("buildReflectionPrompt com timestamps", () => {
+  it("data cada linha da transcrição", () => {
+    const out = buildReflectionPrompt(
+      [
+        { role: "user", content: "oi", ts: "2026-07-24T17:16:00Z" },
+        { role: "assistant", content: "olá", ts: "2026-07-24T17:16:30Z" },
+      ],
+      [],
+    );
+    expect(out).toContain("[24/07/2026 14:16] Usuário: oi");
+    expect(out).toContain("[24/07/2026 14:16] Aurora: olá");
+  });
+
+  it("mensagem sem ts continua na transcrição, só sem carimbo", () => {
+    const out = buildReflectionPrompt([{ role: "user", content: "sem data" }], []);
+    expect(out).toContain("Usuário: sem data");
+    expect(out).not.toContain("[]");
   });
 });

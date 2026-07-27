@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Settings from "./Settings";
 import GraphView from "./GraphView";
 import { buildChatSystemPrompt, buildOnboardingSystemPrompt } from "./prompt";
+import { annotateHistoryForModel, formatTime, formatDayLabel, startsNewDay } from "./chatTime";
 
 /* ============================================================
    AURORA v0 — Aurora Desktop (Projeto NOESIS / LCA)
@@ -280,6 +281,8 @@ interface ChatMsg {
   role: "user" | "assistant";
   text: string;
   images?: ChatImage[];
+  /** ISO da interação. Ausente só na saudação de UI, que não é fala persistida. */
+  ts?: string;
 }
 
 // Traduz erros crus do provedor em mensagens que ajudam o usuário a resolver,
@@ -339,7 +342,9 @@ function useAuroraChat(onAssistantReply: (text: string) => void) {
     if (busy) return;
     const rows = await window.aurora.chat.loadSession(sessionId);
     sessionIdRef.current = sessionId;
-    setMessages(rows.map((r) => ({ role: r.role, text: r.content })));
+    // O ts vem do chat.db desde o ADR-0011 e era descartado aqui — sem ele a UI
+    // não tinha como mostrar quando cada fala aconteceu, nem o modelo como saber.
+    setMessages(rows.map((r) => ({ role: r.role, text: r.content, ts: r.ts })));
   }
 
   useEffect(() => {
@@ -357,7 +362,7 @@ function useAuroraChat(onAssistantReply: (text: string) => void) {
       const finalText = text || streamBufferRef.current;
       setMessages((prev) => {
         const next = [...prev];
-        next[next.length - 1] = { role: "assistant", text: finalText };
+        next[next.length - 1] = { role: "assistant", text: finalText, ts: new Date().toISOString() };
         return next;
       });
       setBusy(false);
@@ -368,7 +373,7 @@ function useAuroraChat(onAssistantReply: (text: string) => void) {
       if (requestId !== requestIdRef.current) return;
       setMessages((prev) => {
         const next = [...prev];
-        next[next.length - 1] = { role: "assistant", text: friendlyChatError(message) };
+        next[next.length - 1] = { role: "assistant", text: friendlyChatError(message), ts: new Date().toISOString() };
         return next;
       });
       setBusy(false);
@@ -379,7 +384,7 @@ function useAuroraChat(onAssistantReply: (text: string) => void) {
 
   async function send(text: string, images: ChatImage[] = []) {
     if (busy || (!text.trim() && images.length === 0)) return;
-    const userMsg: ChatMsg = { role: "user", text, images };
+    const userMsg: ChatMsg = { role: "user", text, images, ts: new Date().toISOString() };
     const history = [...messages, userMsg];
     setMessages([...history, { role: "assistant", text: "" }]);
     setBusy(true);
@@ -412,11 +417,14 @@ function useAuroraChat(onAssistantReply: (text: string) => void) {
       requestId,
       sessionId: sessionId ?? undefined,
       system: buildChatSystemPrompt(intent, contextEntities),
-      messages: history.map((m) => ({
+      // Marca temporal só onde muda algo (virada de dia / silêncio longo): a
+      // Aurora sabia que horas são agora, mas não QUANDO cada fala da conversa
+      // aconteceu — retomar uma sessão de dias atrás parecia conversa contínua.
+      messages: annotateHistoryForModel(history).map((m, i) => ({
         role: m.role,
         content: [
           ...(m.text ? [{ type: "text" as const, text: m.text }] : []),
-          ...(m.images ?? []).map((img) => ({ type: "image" as const, mediaType: img.mediaType, base64: img.base64 })),
+          ...(history[i].images ?? []).map((img) => ({ type: "image" as const, mediaType: img.mediaType, base64: img.base64 })),
         ],
       })),
     });
@@ -591,8 +599,20 @@ function Chat({ chat, tab }: { chat: ReturnType<typeof useAuroraChat>; tab: stri
         {chat.messages.map((m, i) => {
           const isLast = i === chat.messages.length - 1;
           const options = m.role === "assistant" && (!chat.busy || !isLast) ? extractNumberedOptions(m.text) : [];
+          // Temporalidade: separador quando o dia vira, hora em cada interação
+          // (vale pra texto, voz, imagem e anexo — a marca é por mensagem).
+          const dayLabel = startsNewDay(chat.messages, i) ? formatDayLabel(m.ts) : "";
+          const time = formatTime(m.ts);
           return (
-            <div key={i} className={`flex flex-col mb-2 ${m.role === "user" ? "items-end" : "items-start"}`}>
+            <Fragment key={i}>
+            {dayLabel && (
+              <div className="flex items-center gap-2 mb-2 mt-1">
+                <div style={{ flex: 1, height: 1, background: C.line }} />
+                <span className="aur-mono" style={{ fontSize: 10.5, color: C.dim, letterSpacing: "0.04em" }}>{dayLabel}</span>
+                <div style={{ flex: 1, height: 1, background: C.line }} />
+              </div>
+            )}
+            <div className={`flex flex-col mb-2 ${m.role === "user" ? "items-end" : "items-start"}`}>
               <div style={{
                 maxWidth: "85%", padding: "9px 12px", fontSize: 14, lineHeight: 1.45,
                 color: C.bone, whiteSpace: "pre-wrap",
@@ -607,6 +627,11 @@ function Chat({ chat, tab }: { chat: ReturnType<typeof useAuroraChat>; tab: stri
                 ))}
                 {m.text}
               </div>
+              {time && (
+                <span className="aur-mono" style={{ fontSize: 10, color: C.dim, marginTop: 3, padding: "0 2px" }}>
+                  {time}
+                </span>
+              )}
               {options.length > 0 && (
                 <div className="flex flex-col gap-1 mt-1.5" style={{ maxWidth: "85%" }}>
                   {options.map((opt, j) => (
@@ -621,6 +646,7 @@ function Chat({ chat, tab }: { chat: ReturnType<typeof useAuroraChat>; tab: stri
                 </div>
               )}
             </div>
+            </Fragment>
           );
         })}
         {chat.busy && (
