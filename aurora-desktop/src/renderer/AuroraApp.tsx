@@ -2,7 +2,8 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Settings from "./Settings";
 import GraphView from "./GraphView";
 import { buildChatSystemPrompt, buildOnboardingSystemPrompt } from "./prompt";
-import { annotateHistoryForModel, formatTime, formatDayLabel, startsNewDay } from "./chatTime";
+import { formatTime, formatDayLabel, startsNewDay } from "./chatTime";
+import { buildModelMessages } from "./chatPayload";
 
 /* ============================================================
    AURORA v0 — Aurora Desktop (Projeto NOESIS / LCA)
@@ -417,16 +418,10 @@ function useAuroraChat(onAssistantReply: (text: string) => void) {
       requestId,
       sessionId: sessionId ?? undefined,
       system: buildChatSystemPrompt(intent, contextEntities),
-      // Marca temporal só onde muda algo (virada de dia / silêncio longo): a
-      // Aurora sabia que horas são agora, mas não QUANDO cada fala da conversa
-      // aconteceu — retomar uma sessão de dias atrás parecia conversa contínua.
-      messages: annotateHistoryForModel(history).map((m, i) => ({
-        role: m.role,
-        content: [
-          ...(m.text ? [{ type: "text" as const, text: m.text }] : []),
-          ...(history[i].images ?? []).map((img) => ({ type: "image" as const, mediaType: img.mediaType, base64: img.base64 })),
-        ],
-      })),
+      // Marca temporal onde muda algo + imagem só no turno atual (ver
+      // chatPayload.ts: imagem de turno antigo quebrava a sessão inteira em
+      // modelo sem visão).
+      messages: buildModelMessages(history),
     });
 
     window.aurora.mcp
