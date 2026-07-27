@@ -85,7 +85,7 @@ interface AuroraBridge {
   };
   graph: {
     getSnapshot: () => Promise<{
-      nodes: { id: string; label: string; type: string; status: string | null; path: string }[];
+      nodes: { id: string; label: string; type: string; status: string | null; path: string; emerged: boolean }[];
       edges: { from: string; to: string; kind: string; weight: number }[];
       warnings: string[];
     }>;

@@ -31,18 +31,25 @@ export default function GraphView() {
   const fadeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [counts, setCounts] = useState<{ nodes: number; edges: number } | null>(null);
   const [presentTypes, setPresentTypes] = useState<string[]>([]);
+  // Só explica o tracejado se existir alguma nota emergida — legenda de algo
+  // que não está na tela é ruído (e num vault novo isso é sempre zero).
+  const [hasEmerged, setHasEmerged] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ id: string; detail: NoteDetail | null } | null>(null);
   const [activated, setActivated] = useState<NodeMeta[]>([]);
   const [showLegend, setShowLegend] = useState(true);
   const [showTech, setShowTech] = useState(false);
 
-  function baseNodeStyle(type: string) {
+  // Nó emergido (origin: reflection, ADR-0013) ganha contorno tracejado e mais
+  // grosso em vez de cor própria: a cor já carrega o TIPO da nota, e trocá-la
+  // faria a marca de "quem escreveu isso" competir com a de "o que isso é".
+  function baseNodeStyle(type: string, emerged = false) {
     const color = typeInfo(type).color;
     return {
       color: { background: C.panelUp, border: color, highlight: { background: C.panel, border: color } },
       font: { color: C.bone, size: 14, face: "Sora, system-ui, sans-serif" },
-      borderWidth: 2,
+      borderWidth: emerged ? 3 : 2,
+      shapeProperties: { borderDashes: emerged ? [4, 3] : false },
       shadow: { enabled: false },
     };
   }
@@ -67,11 +74,12 @@ export default function GraphView() {
               // pra ler o nome inteiro em vez de cortar.
               label,
               widthConstraint: { maximum: 150 },
-              title: `${typeInfo(n.type).label}: ${label}`,
+              title: `${typeInfo(n.type).label}: ${label}${n.emerged ? " · a Aurora concluiu sozinha" : ""}`,
               shape: "dot",
               size: n.type === "goal" ? 18 : n.type === "project" || n.type === "skill" ? 15 : 12,
-              ...baseNodeStyle(n.type),
+              ...baseNodeStyle(n.type, n.emerged),
               noteType: n.type,
+              emerged: n.emerged,
             };
           }),
         );
@@ -89,6 +97,7 @@ export default function GraphView() {
         nodeMetaRef.current = meta;
         setCounts({ nodes: snap.nodes.length, edges: snap.edges.length });
         setPresentTypes(Object.keys(TYPE_INFO).filter((t) => typeSet.has(t)));
+        setHasEmerged(snap.nodes.some((n) => n.emerged));
 
         const network = new Network(
           containerRef.current,
@@ -139,8 +148,8 @@ export default function GraphView() {
         fadeTimersRef.current.set(
           id,
           setTimeout(() => {
-            const noteType = (nodes.get(id) as any)?.noteType ?? "meta";
-            nodes.update({ id, ...baseNodeStyle(noteType) });
+            const stored = nodes.get(id) as any;
+            nodes.update({ id, ...baseNodeStyle(stored?.noteType ?? "meta", stored?.emerged ?? false) });
             fadeTimersRef.current.delete(id);
           }, ACTIVATION_FADE_MS),
         );
@@ -242,6 +251,18 @@ export default function GraphView() {
               </div>
             );
           })}
+          {hasEmerged && (
+            <div className="flex items-start gap-2" style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${C.line}` }}>
+              <span style={{
+                width: 10, height: 10, borderRadius: 5, marginTop: 3, flexShrink: 0,
+                border: `2px dashed ${C.phosphor}`, background: "transparent",
+              }} />
+              <span style={{ fontSize: 11, color: C.dim, lineHeight: 1.35 }}>
+                <span style={{ color: C.bone, fontWeight: 600 }}>Contorno tracejado</span> — a Aurora chegou
+                nisso sozinha, refletindo depois de uma conversa. O resto foi você que contou pra ela.
+              </span>
+            </div>
+          )}
           <div className="aur-mono" style={{ fontSize: 9.5, color: C.dim, marginTop: 6, opacity: 0.8, lineHeight: 1.4 }}>
             as linhas são relações entre eles · quanto mais grossa, mais forte
           </div>

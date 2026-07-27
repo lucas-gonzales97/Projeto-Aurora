@@ -52,3 +52,33 @@ describe("buildGraphSnapshot", () => {
     expect(g.nodes[0].label).toBe("a");
   });
 });
+
+describe("nós emergidos (ADR-0013)", () => {
+  const base = { path: "p.md", type: "hypothesis", status: "active", title: "T", relations: [] };
+
+  it("marca como emergida a nota com origin: reflection", () => {
+    const s = buildGraphSnapshot([{ ...base, id: "refl", frontmatter: { origin: "reflection" } }]);
+    expect(s.nodes[0].emerged).toBe(true);
+  });
+
+  it("nota inserida por humano não é emergida", () => {
+    const s = buildGraphSnapshot([{ ...base, id: "decl", frontmatter: { origin: "declared" } }]);
+    expect(s.nodes[0].emerged).toBe(false);
+  });
+
+  it("nota sem frontmatter/origin não é emergida (nunca infere)", () => {
+    const semFm = buildGraphSnapshot([{ ...base, id: "a" }]);
+    const semOrigin = buildGraphSnapshot([{ ...base, id: "b", frontmatter: {} }]);
+    expect(semFm.nodes[0].emerged).toBe(false);
+    expect(semOrigin.nodes[0].emerged).toBe(false);
+  });
+
+  it("separa emergidas de inseridas no mesmo snapshot", () => {
+    const s = buildGraphSnapshot([
+      { ...base, id: "r1", frontmatter: { origin: "reflection" } },
+      { ...base, id: "h1", frontmatter: { origin: "declared" } },
+      { ...base, id: "r2", frontmatter: { origin: "reflection" } },
+    ]);
+    expect(s.nodes.filter((n) => n.emerged).map((n) => n.id)).toEqual(["r1", "r2"]);
+  });
+});

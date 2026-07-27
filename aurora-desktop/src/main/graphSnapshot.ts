@@ -10,6 +10,8 @@ export interface GraphSourceNote {
   status: string | null;
   title: string | null;
   relations: { target: string; kind: string; weight?: number }[];
+  /** frontmatter cru do list_notes — de onde sai o origin (nota emergida). */
+  frontmatter?: Record<string, unknown> | null;
 }
 
 export interface GraphNode {
@@ -18,6 +20,12 @@ export interface GraphNode {
   type: string;
   status: string | null;
   path: string;
+  /**
+   * Nota que a Aurora concluiu sozinha (origin: reflection, ADR-0013) em vez de
+   * ter sido inserida por humano — é o numerador da métrica emergido/inserido,
+   * e o grafo é onde isso fica visível.
+   */
+  emerged: boolean;
 }
 
 export interface GraphEdge {
@@ -48,6 +56,7 @@ export function buildGraphSnapshot(notes: GraphSourceNote[]): GraphSnapshot {
       type: n.type ?? "meta",
       status: n.status,
       path: n.path,
+      emerged: n.frontmatter?.origin === "reflection",
     });
   }
 
