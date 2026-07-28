@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<meta name="theme-color" content="#0C1517" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Aurora</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  /* ===== Tokens (DESIGN-SYSTEM.md) ===== */
+  :root{
+    --bg:#0C1517; --surface:#122023; --surface-raised:#18292D; --border:#23393D;
+    --phosphor:#8FDDBE; --copper:#C98B5F; --bone:#E7E2D6; --dim:#8FA3A0; --danger:#D97B6C;
+    --sp-2:8px; --sp-3:12px; --sp-4:16px; --r-notch:3px; --r-md:12px; --r-pill:999px;
+    --dur-quick:120ms; --dur-base:200ms; --dur-breath:2600ms; --dur-drift:22s;
+    --ease-organic:cubic-bezier(0.34,1.2,0.64,1); --ease-mechanical:cubic-bezier(0.2,0,0,1);
+    --glass:rgba(18,32,35,0.72); --blur:blur(16px) saturate(1.2);
+  }
+  @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){ :root{ --glass:var(--surface); } }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; height:100%; overflow:hidden; }
+  body{
+    background:var(--bg); color:var(--bone);
+    font-family:"Sora",system-ui,sans-serif; font-size:15px; line-height:1.45;
+    display:flex; flex-direction:column; height:100dvh;
+  }
+  .mono{ font-family:"IBM Plex Mono",ui-monospace,monospace; }
+
+  /* ===== Aurora viva: gradiente que deriva atrás de tudo ===== */
+  .aurora-bg{ position:fixed; inset:-30%; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(40% 40% at 30% 25%, rgba(143,221,190,0.14), transparent 70%),
+      radial-gradient(45% 45% at 72% 70%, rgba(201,139,95,0.11), transparent 70%);
+    filter:blur(20px); animation:drift var(--dur-drift) ease-in-out infinite alternate; }
+  @keyframes drift{ from{ transform:translate3d(-4%,-3%,0) scale(1); } to{ transform:translate3d(5%,4%,0) scale(1.12); } }
+
+  /* ===== Header (vidro) ===== */
+  header{ position:relative; z-index:2; display:flex; align-items:center; gap:var(--sp-3);
+    padding:calc(env(safe-area-inset-top) + 10px) var(--sp-4) 10px;
+    background:var(--glass); -webkit-backdrop-filter:var(--blur); backdrop-filter:var(--blur);
+    border-bottom:1px solid var(--border); }
+  .dot{ width:9px; height:9px; border-radius:50%; background:var(--phosphor);
+    box-shadow:0 0 10px var(--phosphor); animation:breath var(--dur-breath) var(--ease-organic) infinite; }
+  @keyframes breath{ 0%,100%{ opacity:.55; transform:scale(.9);} 50%{ opacity:1; transform:scale(1.15);} }
+  header .name{ font-weight:700; letter-spacing:.02em; }
+  header .sub{ color:var(--dim); font-size:11px; margin-left:auto; }
+
+  /* ===== Lista de mensagens ===== */
+  #log{ position:relative; z-index:1; flex:1; overflow-y:auto; padding:var(--sp-4);
+    display:flex; flex-direction:column; gap:10px; -webkit-overflow-scrolling:touch; }
+  .row{ display:flex; flex-direction:column; max-width:88%; animation:rise var(--dur-base) var(--ease-organic); }
+  @keyframes rise{ from{ opacity:0; transform:translateY(6px);} to{ opacity:1; transform:none;} }
+  .row.user{ align-self:flex-end; align-items:flex-end; }
+  .row.aurora{ align-self:flex-start; align-items:flex-start; }
+  .bubble{ padding:9px 13px; border:1px solid var(--border); white-space:pre-wrap; word-wrap:break-word; }
+  .user .bubble{ background:var(--surface-raised); border-radius:var(--r-md) var(--r-md) var(--r-notch) var(--r-md); }
+  .aurora .bubble{ background:var(--surface); border-left:2px solid var(--copper);
+    border-radius:var(--r-notch) var(--r-md) var(--r-md) var(--r-md); }
+  .time{ font-size:10px; color:var(--dim); margin-top:3px; padding:0 2px; }
+  .prov{ font-size:10px; color:var(--phosphor); opacity:.85; margin-top:2px; padding:0 2px; }
+
+  /* streaming shimmer */
+  .streaming{ background-image:linear-gradient(100deg, transparent 40%, rgba(143,221,190,.10) 50%, transparent 60%);
+    background-size:200% 100%; animation:shimmer 1.6s linear infinite; }
+  @keyframes shimmer{ from{ background-position:200% 0;} to{ background-position:-200% 0;} }
+
+  /* pensando */
+  .thinking{ align-self:flex-start; display:flex; align-items:center; gap:8px; color:var(--dim); font-size:12px; padding:2px 4px; }
+  .thinking .dot{ animation:breath 1.4s var(--ease-organic) infinite; }
+
+  /* ===== Composer (vidro) ===== */
+  form{ position:relative; z-index:2; display:flex; gap:var(--sp-2); align-items:flex-end;
+    padding:10px var(--sp-3) calc(env(safe-area-inset-bottom) + 10px);
+    background:var(--glass); -webkit-backdrop-filter:var(--blur); backdrop-filter:var(--blur);
+    border-top:1px solid var(--border); }
+  textarea{ flex:1; resize:none; max-height:120px; min-height:22px; padding:10px 12px;
+    background:var(--surface); color:var(--bone); border:1px solid var(--border); border-radius:var(--r-md);
+    font-family:inherit; font-size:15px; line-height:1.4; outline:none; transition:border-color var(--dur-quick) var(--ease-mechanical); }
+  textarea:focus{ border-color:var(--phosphor); }
+  button.send{ background:var(--copper); color:#0C1517; border:none; border-radius:var(--r-md);
+    padding:10px 16px; font-family:inherit; font-weight:600; font-size:15px; cursor:pointer;
+    transition:transform var(--dur-quick) var(--ease-organic), opacity var(--dur-quick); }
+  button.send:active{ transform:scale(.94); }
+  button.send:disabled{ opacity:.5; }
+
+  /* ===== Gate de token ===== */
+  #gate{ position:fixed; inset:0; z-index:10; display:flex; flex-direction:column; justify-content:center;
+    gap:var(--sp-4); padding:var(--sp-4); background:var(--bg); }
+  #gate h1{ font-weight:700; font-size:26px; margin:0; }
+  #gate p{ color:var(--dim); font-size:13px; margin:0; }
+  #gate input{ padding:12px; background:var(--surface); color:var(--bone); border:1px solid var(--border);
+    border-radius:var(--r-md); font-family:"IBM Plex Mono",monospace; font-size:14px; outline:none; }
+  #gate button{ padding:12px; background:var(--copper); color:#0C1517; border:none; border-radius:var(--r-md);
+    font-family:inherit; font-weight:600; font-size:15px; cursor:pointer; }
+  .err{ color:var(--danger); font-size:12px; min-height:14px; }
+  @media (prefers-reduced-motion:reduce){ .aurora-bg,.dot,.streaming,.row{ animation:none!important; } }
+</style>
+</head>
+<body>
+  <div class="aurora-bg"></div>
+
+  <div id="gate">
+    <div>
+      <h1>Aurora</h1>
+      <p>Cole o token que o servidor imprimiu ao subir. Fica salvo só neste aparelho.</p>
+    </div>
+    <input id="tok" class="mono" placeholder="token" autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <button id="enter">Entrar</button>
+    <div class="err" id="gate-err"></div>
+  </div>
+
+  <header hidden id="app-header">
+    <span class="dot"></span>
+    <span class="name">Aurora</span>
+    <span class="sub mono" id="status">memória viva</span>
+  </header>
+
+  <div id="log" hidden></div>
+
+  <form hidden id="composer">
+    <textarea id="input" rows="1" placeholder="Fala com a Aurora…" autocomplete="off"></textarea>
+    <button class="send" id="send" type="submit">↑</button>
+  </form>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const log = $("#log"), input = $("#input"), form = $("#composer");
+const history = [];
+let token = localStorage.getItem("aurora_token") || "";
+
+function fmtTime(d){ return new Intl.DateTimeFormat("pt-BR",{timeZone:"America/Sao_Paulo",hour:"2-digit",minute:"2-digit"}).format(d); }
+
+function addRow(role, text){
+  const row = document.createElement("div"); row.className = "row " + role;
+  const bubble = document.createElement("div"); bubble.className = "bubble"; bubble.textContent = text;
+  const time = document.createElement("div"); time.className = "time mono"; time.textContent = fmtTime(new Date());
+  row.appendChild(bubble); row.appendChild(time); log.appendChild(row);
+  log.scrollTop = log.scrollHeight;
+  return { row, bubble };
+}
+function thinking(on){
+  let el = $("#thinking");
+  if(on && !el){ el = document.createElement("div"); el.id="thinking"; el.className="thinking";
+    el.innerHTML = '<span class="dot"></span> aurora está pensando…'; log.appendChild(el); log.scrollTop = log.scrollHeight; }
+  if(!on && el) el.remove();
+}
+
+async function send(message){
+  addRow("user", message);
+  history.push({ role:"user", content:message });
+  input.value=""; input.style.height="auto"; $("#send").disabled = true;
+  thinking(true);
+
+  let bubble=null, acc="";
+  try{
+    const resp = await fetch("/api/chat", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+token },
+      body: JSON.stringify({ message, history: history.slice(0,-1) }),
+    });
+    if(resp.status === 401){ thinking(false); localStorage.removeItem("aurora_token"); location.reload(); return; }
+    const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf="";
+    while(true){
+      const { done, value } = await reader.read(); if(done) break;
+      buf += dec.decode(value,{stream:true});
+      const chunks = buf.split("\n\n"); buf = chunks.pop();
+      for(const c of chunks){
+        const ev = (c.match(/event: (.*)/)||[])[1];
+        const dataLine = (c.match(/data: (.*)/s)||[])[1];
+        if(!ev || dataLine===undefined) continue;
+        const data = JSON.parse(dataLine);
+        if(ev==="delta"){
+          thinking(false);
+          if(!bubble){ bubble = addRow("aurora","").bubble; bubble.classList.add("streaming"); }
+          acc += data; bubble.textContent = acc; log.scrollTop = log.scrollHeight;
+        } else if(ev==="context" && data.count>0){
+          $("#status").textContent = data.count + " memórias ativas";
+        } else if(ev==="error"){
+          thinking(false);
+          const b = bubble || addRow("aurora","").bubble; b.classList.remove("streaming");
+          b.textContent = "⚠️ " + data; b.style.borderLeftColor = "var(--danger)";
+        }
+      }
+    }
+    if(bubble){ bubble.classList.remove("streaming"); history.push({ role:"assistant", content:acc }); }
+  }catch(e){
+    thinking(false); const b = addRow("aurora","").bubble; b.textContent = "⚠️ Falha de conexão: "+e.message; b.style.borderLeftColor="var(--danger)";
+  }finally{ thinking(false); $("#send").disabled = false; }
+}
+
+form.addEventListener("submit",(e)=>{ e.preventDefault(); const m=input.value.trim(); if(m) send(m); });
+input.addEventListener("input",()=>{ input.style.height="auto"; input.style.height=Math.min(input.scrollHeight,120)+"px"; });
+input.addEventListener("keydown",(e)=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); form.requestSubmit(); } });
+
+function boot(){
+  $("#gate").hidden = true; $("#app-header").hidden=false; log.hidden=false; form.hidden=false;
+  addRow("aurora","Oi. Eu sou a Aurora. Minha memória vem do teu vault — o mesmo do desktop. O que a gente ataca?");
+  input.focus();
+}
+$("#enter").addEventListener("click", async ()=>{
+  const t = $("#tok").value.trim(); if(!t) return;
+  $("#gate-err").textContent = "";
+  // valida contra endpoint leve de auth (não gasta o LLM)
+  const r = await fetch("/api/auth",{ headers:{ "Authorization":"Bearer "+t } }).catch(()=>null);
+  if(!r){ $("#gate-err").textContent="Sem conexão com o servidor."; return; }
+  if(r.status===401){ $("#gate-err").textContent="Token inválido."; return; }
+  token=t; localStorage.setItem("aurora_token",t); location.reload();
+});
+$("#tok").addEventListener("keydown",(e)=>{ if(e.key==="Enter") $("#enter").click(); });
+
+if(token) boot(); else { $("#tok").focus(); }
+</script>
+</body>
+</html>
