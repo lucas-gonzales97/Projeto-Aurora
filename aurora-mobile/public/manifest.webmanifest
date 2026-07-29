@@ -1,0 +1,15 @@
+{
+  "name": "Aurora",
+  "short_name": "Aurora",
+  "description": "Aurora — persona cognitiva do Projeto NOESIS, com memória do vault.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0C1517",
+  "theme_color": "#0C1517",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

@@ -175,11 +175,18 @@ async function handleChat(req, res) {
   });
 }
 
-function serveStatic(res) {
-  const file = path.join(__dirname, "public", "index.html");
+const MIME = {
+  ".html": "text/html; charset=utf-8", ".webmanifest": "application/manifest+json",
+  ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
+};
+function serveStatic(res, pathname) {
+  const rel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  const file = path.join(__dirname, "public", rel);
+  // Nunca sair de public/ (path traversal).
+  if (!file.startsWith(path.join(__dirname, "public"))) return res.writeHead(403).end("forbidden");
   fs.readFile(file, (err, buf) => {
     if (err) return res.writeHead(404).end("not found");
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(buf);
+    res.writeHead(200, { "Content-Type": MIME[path.extname(file)] ?? "application/octet-stream" }).end(buf);
   });
 }
 
@@ -194,7 +201,7 @@ const server = http.createServer((req, res) => {
     return res.writeHead(200, { "Content-Type": "application/json" })
       .end(JSON.stringify({ model: MODEL, vault: getContext ? "on" : "off" }));
   }
-  if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) return serveStatic(res);
+  if (req.method === "GET") return serveStatic(res, url.pathname);
   res.writeHead(404).end("not found");
 });
 

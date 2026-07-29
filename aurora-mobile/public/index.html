@@ -6,6 +6,10 @@
 <meta name="theme-color" content="#0C1517" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="mobile-web-app-capable" content="yes" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/icon.svg" />
+<link rel="apple-touch-icon" href="/icon.svg" />
 <title>Aurora</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -213,6 +217,8 @@ $("#enter").addEventListener("click", async ()=>{
 $("#tok").addEventListener("keydown",(e)=>{ if(e.key==="Enter") $("#enter").click(); });
 
 if(token) boot(); else { $("#tok").focus(); }
+
+if("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{});
 </script>
 </body>
 </html>
