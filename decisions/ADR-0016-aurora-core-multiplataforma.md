@@ -94,6 +94,25 @@ Registrar isso evita prometer o que a plataforma não dá.
 - **Ficar no PWA/thin-client:** entrega hoje, mas é só o modo Provider — não é a
   independência pedida. Serve como ponte, não como destino.
 
+### 7. Linguagem do Core: TypeScript (Go/Rust não entram no núcleo)
+
+O gargalo da Aurora é **I/O de LLM** (~1–3s por turno), não CPU: o retrieval
+sobre o vault pessoal (dezenas–centenas de notas) custa ~ms. Reescrever o núcleo
+em Go/Rust otimizaria o que o usuário **não sente** e quebraria o pilar da
+decisão 1 (um Core em TS rodando em Node **e** em RN/Hermes — mesma linguagem nos
+dois lados). Uma linguagem nativa entra **cirúrgica**, nunca como o núcleo:
+
+- **Rust para inferência on-device** (candle/llama.cpp) SE/quando houver modelo
+  local — um plugin, não o Core.
+- **Tauri (Rust) para o shell desktop** como alternativa ao Electron (RAM/boot),
+  sem trocar a linguagem do Core (frontend segue web/JS).
+- **Go para o backend de sync/relay** (Frente 3/7, "Aurora Relay") se virar
+  serviço — backend, não cliente.
+
+Regra: não trocar a linguagem do cérebro por performance que não é gargalo;
+trocar a casca (Tauri) e adicionar músculo nativo (Rust) só onde CPU for gargalo
+real — hoje, lugar nenhum.
+
 ## Roadmap faseado (honesto — isto é semanas, não uma sessão)
 
 - **Fase 0 — ✅ feita:** thin-client (`aurora-mobile/`) = semente do modo Provider
