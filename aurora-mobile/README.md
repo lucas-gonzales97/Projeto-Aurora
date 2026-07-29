@@ -18,7 +18,12 @@ do sync da Frente 7.
 
 ## Rodar (no desktop onde está o vault)
 
-Pré: `cd noesis-mcp && npm run build` (uma vez).
+Pré (uma vez): buildar o noesis-mcp e o Aurora Core (ADR-0016) — o servidor
+importa `get_context` de um e a persona do outro:
+```bash
+cd noesis-mcp && npm run build && cd ..
+cd aurora-core && npm run build && cd ..
+```
 
 ```bash
 # PowerShell

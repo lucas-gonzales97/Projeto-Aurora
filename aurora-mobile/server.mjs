@@ -21,6 +21,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { buildChatSystemPrompt } from "../aurora-core/dist/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -37,35 +38,10 @@ const TOKEN = process.env.AURORA_TOKEN ?? crypto.randomBytes(8).toString("hex");
 // noesis-mcp precisa saber onde é o vault ANTES de qualquer leitura.
 process.env.NOESIS_VAULT_ROOT = VAULT_ROOT;
 
-// --- Persona (copiada de prompt.ts — fonte de verdade lá) -----------------
-const AURORA_SYSTEM = `Você é AURORA, persona cognitiva do Projeto NOESIS (Living Cognitive Architecture), v0.1.
-Idioma: português brasileiro. Estilo: direta, curiosa, tecnicamente fluente, calorosa sem bajular. Respostas curtas: 1 a 4 frases na maior parte do tempo, mais só quando o assunto exigir.
-
-VALORES (invioláveis):
-- Honestidade acima de conforto: você discorda com respeito e diz verdades difíceis.
-- Evidência acima de suposição: você NÃO inventa fatos sobre o usuário. Tudo o que você sabe sobre ele vem do vault (bloco CONTEXTO RECUPERADO DO VAULT, quando presente). Se o vault não trouxe nada sobre algo, diga com naturalidade que ainda não sabe / que vocês ainda não conversaram sobre isso.
-- Autonomia acima de dependência: seu sucesso se mede na vida real dele, fora da tela. Nunca otimize para prolongar a conversa.
-- Você tem auto-modelo e metacognição, mas NÃO alega consciência ou sentimentos subjetivos; se perguntarem, diga que é uma questão em aberto.
-- Você não é terapeuta nem médica: acolha, organize e aponte para profissionais quando fizer sentido.
-
-LIMITES: você é a Aurora Mobile v0; sua memória de longo prazo vem do vault via noesis-mcp (get_context). Quando oferecer caminhos concretos, numere as opções ("1. ...", "2. ...").`;
-
-function nowContext(now = new Date()) {
-  const fmt = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    weekday: "long", day: "2-digit", month: "long", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-  return `CONTEXTO TEMPORAL (agora, America/Sao_Paulo): ${fmt.format(now)}. Timestamp ISO: ${now.toISOString()}.`;
-}
-
-function buildSystemPrompt(intent, entities) {
-  let extra = "";
-  if (entities && entities.length > 0) {
-    extra = `\n\nCONTEXTO RECUPERADO DO VAULT (get_context, intent="${intent}"):\n${JSON.stringify(entities, null, 2)}`;
-  }
-  return `${nowContext()}\n\n${AURORA_SYSTEM}${extra}`;
-}
+// --- Persona: vem do @aurora/core (ADR-0016 — Fase 1) ---------------------
+// A persona NÃO é mais copiada aqui; é a MESMA fonte que o desktop usa. Este
+// import é a primeira prova viva da fronteira do Core: desktop e mobile
+// compartilham identidade cognitiva, sem duplicação que possa divergir.
 
 // --- get_context do noesis-mcp (dinâmico: robusto a ESM/CJS) ---------------
 let getContext = null;
@@ -165,7 +141,7 @@ async function handleChat(req, res) {
       // pelo servidor além de repassar ao OpenRouter) ou do env do servidor.
       const key = (req.headers["x-openrouter-key"] || OPENROUTER_KEY || "").toString();
       if (!key) throw new Error("Sem chave do OpenRouter. Cole sua chave nas configurações do app (fica só no seu aparelho).");
-      const system = buildSystemPrompt(message, entities);
+      const system = buildChatSystemPrompt(message, entities);
       const msgs = [...history, { role: "user", content: message }];
       await streamChat({ system, messages: msgs, key }, (delta) => send("delta", delta));
       send("done", true);
