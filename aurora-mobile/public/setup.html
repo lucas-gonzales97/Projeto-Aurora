@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Aurora — Parear celular</title>
+<style>
+  :root{ --bg:#0C1517; --surface:#122023; --border:#23393D; --phosphor:#8FDDBE; --copper:#C98B5F; --bone:#E7E2D6; --dim:#8FA3A0; --danger:#D97B6C; }
+  *{ box-sizing:border-box; } body{ margin:0; background:var(--bg); color:var(--bone); font-family:"Sora",system-ui,sans-serif;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .card{ width:100%; max-width:440px; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px; }
+  h1{ margin:0 0 4px; font-size:22px; } p{ color:var(--dim); font-size:13px; line-height:1.5; margin:0 0 16px; }
+  label{ display:block; font-size:12px; color:var(--dim); margin:14px 0 4px; }
+  input{ width:100%; padding:11px; background:#0C1517; color:var(--bone); border:1px solid var(--border); border-radius:10px;
+    font-family:"IBM Plex Mono",monospace; font-size:13px; outline:none; }
+  input:focus{ border-color:var(--phosphor); }
+  button{ width:100%; margin-top:16px; padding:12px; background:var(--copper); color:#0C1517; border:none; border-radius:10px;
+    font-family:inherit; font-weight:600; font-size:15px; cursor:pointer; }
+  #qrwrap{ display:none; margin-top:20px; text-align:center; }
+  #qr{ display:inline-block; background:#fff; padding:14px; border-radius:12px; }
+  .ok{ color:var(--phosphor); font-size:13px; } .err{ color:var(--danger); font-size:12px; min-height:14px; margin-top:6px; }
+  .step{ font-size:12px; color:var(--dim); margin-top:12px; line-height:1.5; }
+  code{ font-family:"IBM Plex Mono",monospace; color:var(--phosphor); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Parear o celular</h1>
+    <p>Cole aqui, no PC, o <b>token de acesso</b> (o servidor imprimiu ao subir) e a sua <b>chave do OpenRouter</b>. A chave fica só na memória deste servidor. O celular só vai escanear o QR — sem digitar nada.</p>
+
+    <label>Token de acesso</label>
+    <input id="tok" placeholder="token de acesso" autocomplete="off" spellcheck="false" />
+    <label>Chave do OpenRouter (sk-or-…)</label>
+    <input id="key" placeholder="sk-or-…" autocomplete="off" spellcheck="false" />
+    <button id="go">Gerar QR de pareamento</button>
+    <div class="err" id="err"></div>
+
+    <div id="qrwrap">
+      <div class="ok">✅ Chave salva no servidor. Escaneie no celular:</div>
+      <div id="qr"></div>
+      <div class="step">1. Abra a câmera do Motorola e aponte pro QR.<br>2. Abra o link → a Aurora entra já conectada.<br>3. Menu do navegador → <code>Adicionar à tela inicial</code>.</div>
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+const $=(s)=>document.querySelector(s);
+$("#go").addEventListener("click", async ()=>{
+  $("#err").textContent="";
+  const tok=$("#tok").value.trim(), key=$("#key").value.trim();
+  if(!tok||!key){ $("#err").textContent="Preencha o token e a chave."; return; }
+  const r=await fetch("/api/setkey",{ method:"POST", headers:{ "Content-Type":"application/json","Authorization":"Bearer "+tok }, body:JSON.stringify({key}) }).catch(()=>null);
+  if(!r){ $("#err").textContent="Sem conexão com o servidor."; return; }
+  if(r.status===401){ $("#err").textContent="Token de acesso inválido."; return; }
+  if(!r.ok){ $("#err").textContent="Falha ao salvar a chave."; return; }
+  // URL que o celular vai abrir: mesma origem (o túnel, quando acessado por ele) + token embutido.
+  const link = location.origin + "/?token=" + encodeURIComponent(tok);
+  try{
+    const qr = qrcode(0,"M"); qr.addData(link); qr.make();
+    $("#qr").innerHTML = qr.createSvgTag({ cellSize:5, margin:0 });
+  }catch(e){ $("#qr").textContent = link; }
+  $("#qrwrap").style.display="block";
+});
+</script>
+</body>
+</html>

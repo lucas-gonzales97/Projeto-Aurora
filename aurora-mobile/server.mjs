@@ -38,6 +38,12 @@ const TOKEN = process.env.AURORA_TOKEN ?? crypto.randomBytes(8).toString("hex");
 // noesis-mcp precisa saber onde é o vault ANTES de qualquer leitura.
 process.env.NOESIS_VAULT_ROOT = VAULT_ROOT;
 
+// Chave do OpenRouter em MEMÓRIA (nunca em disco): o Lucas cola UMA vez na
+// página /setup (no PC, com copiar-colar fácil) e ela fica aqui pra o celular
+// não precisar digitar nada. Ordem de resolução: header do aparelho → esta →
+// env. Some quando o servidor cai (efêmera de propósito).
+let runtimeKey = "";
+
 // --- Persona: vem do @aurora/core (ADR-0016 — Fase 1) ---------------------
 // A persona NÃO é mais copiada aqui; é a MESMA fonte que o desktop usa. Este
 // import é a primeira prova viva da fronteira do Core: desktop e mobile
@@ -139,7 +145,7 @@ async function handleChat(req, res) {
 
       // 2) LLM (streaming). A chave pode vir do aparelho (header, nunca tocada
       // pelo servidor além de repassar ao OpenRouter) ou do env do servidor.
-      const key = (req.headers["x-openrouter-key"] || OPENROUTER_KEY || "").toString();
+      const key = (req.headers["x-openrouter-key"] || runtimeKey || OPENROUTER_KEY || "").toString();
       if (!key) throw new Error("Sem chave do OpenRouter. Cole sua chave nas configurações do app (fica só no seu aparelho).");
       const system = buildChatSystemPrompt(message, entities);
       const msgs = [...history, { role: "user", content: message }];
@@ -158,7 +164,8 @@ const MIME = {
   ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
 };
 function serveStatic(res, pathname) {
-  const rel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  let rel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  if (!path.extname(rel)) rel += ".html"; // /setup → setup.html
   const file = path.join(__dirname, "public", rel);
   // Nunca sair de public/ (path traversal).
   if (!file.startsWith(path.join(__dirname, "public"))) return res.writeHead(403).end("forbidden");
@@ -174,6 +181,21 @@ const server = http.createServer((req, res) => {
   if (req.method === "GET" && url.pathname === "/api/auth") {
     const ok = (req.headers.authorization ?? "") === `Bearer ${TOKEN}`;
     return res.writeHead(ok ? 200 : 401).end(ok ? "ok" : "unauthorized");
+  }
+  // Setar a chave do OpenRouter na memória do servidor (pelo /setup, no PC).
+  if (req.method === "POST" && url.pathname === "/api/setkey") {
+    if ((req.headers.authorization ?? "") !== `Bearer ${TOKEN}`) return unauthorized(res);
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      try {
+        const k = String(JSON.parse(body || "{}").key ?? "").trim();
+        if (!k) return res.writeHead(400).end("empty key");
+        runtimeKey = k;
+        res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+      } catch { res.writeHead(400).end("bad json"); }
+    });
+    return;
   }
   if (req.method === "GET" && url.pathname === "/api/config") {
     return res.writeHead(200, { "Content-Type": "application/json" })

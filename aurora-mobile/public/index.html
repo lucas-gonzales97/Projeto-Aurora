@@ -135,6 +135,12 @@
 const $ = (s) => document.querySelector(s);
 const log = $("#log"), input = $("#input"), form = $("#composer");
 const history = [];
+// Pareamento por QR: se a URL trouxe ?token=… (o QR do /setup), conecta sozinho
+// e limpa a URL — o celular não digita nada.
+const _params = new URLSearchParams(location.search);
+const _qrTok = _params.get("token");
+if(_qrTok){ localStorage.setItem("aurora_token", _qrTok); history.replaceState(null,"",location.pathname); }
+
 let token = localStorage.getItem("aurora_token") || "";
 let orKey = localStorage.getItem("aurora_or_key") || "";
 
