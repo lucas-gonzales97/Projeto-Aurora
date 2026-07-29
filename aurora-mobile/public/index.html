@@ -110,9 +110,10 @@
   <div id="gate">
     <div>
       <h1>Aurora</h1>
-      <p>Cole o token que o servidor imprimiu ao subir. Fica salvo só neste aparelho.</p>
+      <p>Token de acesso (o servidor imprime ao subir) + sua chave do OpenRouter (pra ela responder). Tudo fica salvo só neste aparelho.</p>
     </div>
-    <input id="tok" class="mono" placeholder="token" autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <input id="tok" class="mono" placeholder="token de acesso" autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <input id="orkey" class="mono" placeholder="chave OpenRouter (sk-or-…)" autocomplete="off" autocapitalize="off" spellcheck="false" />
     <button id="enter">Entrar</button>
     <div class="err" id="gate-err"></div>
   </div>
@@ -135,6 +136,7 @@ const $ = (s) => document.querySelector(s);
 const log = $("#log"), input = $("#input"), form = $("#composer");
 const history = [];
 let token = localStorage.getItem("aurora_token") || "";
+let orKey = localStorage.getItem("aurora_or_key") || "";
 
 function fmtTime(d){ return new Intl.DateTimeFormat("pt-BR",{timeZone:"America/Sao_Paulo",hour:"2-digit",minute:"2-digit"}).format(d); }
 
@@ -163,7 +165,7 @@ async function send(message){
   try{
     const resp = await fetch("/api/chat", {
       method:"POST",
-      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+token },
+      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+token, ...(orKey?{"X-OpenRouter-Key":orKey}:{}) },
       body: JSON.stringify({ message, history: history.slice(0,-1) }),
     });
     if(resp.status === 401){ thinking(false); localStorage.removeItem("aurora_token"); location.reload(); return; }
@@ -212,7 +214,9 @@ $("#enter").addEventListener("click", async ()=>{
   const r = await fetch("/api/auth",{ headers:{ "Authorization":"Bearer "+t } }).catch(()=>null);
   if(!r){ $("#gate-err").textContent="Sem conexão com o servidor."; return; }
   if(r.status===401){ $("#gate-err").textContent="Token inválido."; return; }
-  token=t; localStorage.setItem("aurora_token",t); location.reload();
+  token=t; localStorage.setItem("aurora_token",t);
+  const k = $("#orkey").value.trim(); if(k){ orKey=k; localStorage.setItem("aurora_or_key",k); }
+  location.reload();
 });
 $("#tok").addEventListener("keydown",(e)=>{ if(e.key==="Enter") $("#enter").click(); });
 

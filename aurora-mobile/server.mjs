@@ -84,12 +84,12 @@ async function loadGetContext() {
 }
 
 // --- OpenRouter streaming relay -------------------------------------------
-async function streamChat({ system, messages }, onDelta) {
+async function streamChat({ system, messages, key }, onDelta) {
   const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENROUTER_KEY}`,
+      Authorization: `Bearer ${key}`,
       "HTTP-Referer": "https://noesis.local/aurora-mobile",
       "X-Title": "Aurora Mobile",
     },
@@ -161,11 +161,13 @@ async function handleChat(req, res) {
       }
       send("context", { count: entities.length, ids: entities.map((e) => e.id).filter(Boolean) });
 
-      // 2) LLM (streaming).
-      if (!OPENROUTER_KEY) throw new Error("AURORA_OPENROUTER_KEY não definida no servidor.");
+      // 2) LLM (streaming). A chave pode vir do aparelho (header, nunca tocada
+      // pelo servidor além de repassar ao OpenRouter) ou do env do servidor.
+      const key = (req.headers["x-openrouter-key"] || OPENROUTER_KEY || "").toString();
+      if (!key) throw new Error("Sem chave do OpenRouter. Cole sua chave nas configurações do app (fica só no seu aparelho).");
       const system = buildSystemPrompt(message, entities);
       const msgs = [...history, { role: "user", content: message }];
-      await streamChat({ system, messages: msgs }, (delta) => send("delta", delta));
+      await streamChat({ system, messages: msgs, key }, (delta) => send("delta", delta));
       send("done", true);
     } catch (e) {
       send("error", e.message ?? String(e));
